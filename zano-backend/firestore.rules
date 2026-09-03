@@ -1,0 +1,255 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ========================================
+    // Authentication Helpers
+    // ========================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() &&
+             request.auth.uid == userId;
+    }
+
+    // ========================================
+    // User Profile Validation
+    // ========================================
+
+    function isPassengerProfile() {
+      return request.resource.data.role == "passenger";
+    }
+
+    function isValidNewPassengerProfile() {
+      return isPassengerProfile() &&
+             request.resource.data.keys().hasAll([
+               "firstName",
+               "lastName",
+               "phoneNumber",
+               "email",
+               "role",
+               "authProvider",
+               "createdAt",
+               "updatedAt"
+             ]);
+    }
+
+    function roleHasNotChanged() {
+      return request.resource.data.role ==
+             resource.data.role;
+    }
+
+    // ========================================
+    // User Profiles
+    // ========================================
+
+    match /users/{userId} {
+
+      // User can retrieve only their own profile.
+      allow get: if isOwner(userId);
+
+      // Do not allow collection-wide user listing.
+      allow list: if false;
+
+      // Public registration may only create
+      // a passenger profile for the authenticated user.
+      allow create: if isOwner(userId) &&
+                    isValidNewPassengerProfile();
+
+      // User may update their own profile,
+      // but cannot change their role.
+      allow update: if isOwner(userId) &&
+                    roleHasNotChanged();
+
+      // User profiles are not deleted directly
+      // from the browser.
+      allow delete: if false;
+    }
+
+    // ========================================
+    // Passenger Bookings
+    // ========================================
+
+    match /bookings/{bookingId} {
+
+      // Individual booking access.
+      allow get: if isSignedIn() &&
+                 resource.data.userId ==
+                 request.auth.uid;
+
+      // Required for dashboard queries such as:
+      //
+      // where("userId", "==", user.uid)
+      //
+      // Firestore will only allow the query when
+      // it can prove every returned booking belongs
+      // to the authenticated passenger.
+      allow list: if isSignedIn() &&
+                  resource.data.userId ==
+                  request.auth.uid;
+
+      // Booking writes must be handled later
+      // through trusted backend logic.
+      allow create, update, delete: if false;
+    }
+
+    // ========================================
+    // Passenger Tickets
+    // ========================================
+
+    match /tickets/{ticketId} {
+
+      // Passenger may retrieve only their ticket.
+      allow get: if isSignedIn() &&
+                 resource.data.userId ==
+                 request.auth.uid;
+
+      // Supports passenger dashboard ticket query.
+      allow list: if isSignedIn() &&
+                  resource.data.userId ==
+                  request.auth.uid;
+
+      // Tickets must be issued/modified
+      // through trusted backend logic.
+      allow create, update, delete: if false;
+    }
+
+    // ========================================
+    // Trip Discovery
+    // ========================================
+    //
+    // Passengers need read access to trip data
+    // for the Zano search/results experience.
+    // Writes remain backend/company controlled.
+    // ========================================
+
+    match /trips/{tripId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if false;
+    }
+
+    // ========================================
+    // Routes
+    // ========================================
+
+    match /routes/{routeId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if false;
+    }
+
+    // ========================================
+    // Transport Companies
+    // ========================================
+
+    match /companies/{companyId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if false;
+    }
+
+    // ========================================
+    // Vehicles
+    // ========================================
+
+    match /vehicles/{vehicleId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if false;
+    }
+
+    // ========================================
+    // Seat Availability
+    // ========================================
+    //
+    // Passengers may inspect seat availability.
+    // They cannot directly reserve/book seats.
+    // Secure backend transactions will handle that.
+    // ========================================
+
+    match /seats/{seatId} {
+  allow get, list: if isSignedIn();
+  allow create, update, delete: if false;
+}
+
+// ========================================
+// Date-Specific Seat Inventory
+// ========================================
+//
+// Signed-in passengers may read seat availability
+// for recurring trips on a specific travel date.
+//
+// Passengers cannot create, reserve, book,
+// update, or delete inventory directly.
+//
+// All inventory writes are handled securely
+// by the server-side booking/payment transaction.
+// ========================================
+
+match /tripSeatInventory/{inventoryId} {
+  allow get, list: if isSignedIn();
+  allow create, update, delete: if false;
+}
+
+// ========================================
+// Payments
+// ========================================
+
+    match /payments/{paymentId} {
+
+      allow get: if isSignedIn() &&
+                 resource.data.userId ==
+                 request.auth.uid;
+
+      allow list: if isSignedIn() &&
+                  resource.data.userId ==
+                  request.auth.uid;
+
+      // Never allow payment creation or
+      // modification directly from browser.
+      allow create, update, delete: if false;
+    }
+
+    // ========================================
+    // Passenger Notifications
+    // ========================================
+
+    match /notifications/{notificationId} {
+
+      allow get: if isSignedIn() &&
+                 resource.data.userId ==
+                 request.auth.uid;
+
+      allow list: if isSignedIn() &&
+                  resource.data.userId ==
+                  request.auth.uid;
+
+      // Notification generation will be handled
+      // by trusted backend logic.
+      allow create, update, delete: if false;
+    }
+
+    // ========================================
+    // Reviews
+    // ========================================
+
+    match /reviews/{reviewId} {
+
+      // Authenticated passengers can read reviews.
+      allow get, list: if isSignedIn();
+
+      // Review writing will be implemented later
+      // with completed-trip validation.
+      allow create, update, delete: if false;
+    }
+
+    // ========================================
+    // Deny Everything Else
+    // ========================================
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
