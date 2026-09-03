@@ -11,6 +11,16 @@ const nextConfig: NextConfig = {
   },
 
   /* ========================================
+     Server Dependencies
+  ======================================== */
+
+  serverExternalPackages: [
+    "firebase-admin",
+    "jwks-rsa",
+    "jose",
+  ],
+
+  /* ========================================
      Remote Images
   ======================================== */
 
