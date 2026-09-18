@@ -11,14 +11,65 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isSignedIn() &&
-             request.auth.uid == userId;
-    }
+   function isOwner(userId) {
 
-    // ========================================
-    // User Profile Validation
-    // ========================================
+  return isSignedIn() &&
+         request.auth.uid == userId;
+
+}
+
+// ========================================
+// Operator Authorization
+// ========================================
+
+// Operator membership documents use the
+// authenticated Firebase UID as document ID:
+//
+// operatorMembers/{uid}
+//
+// Example:
+// {
+//   userId: "<uid>",
+//   companyId: "vip-jeoun",
+//   role: "admin",
+//   status: "active"
+// }
+
+function operatorMemberPath() {
+
+  return /databases/$(database)/documents/operatorMembers/$(request.auth.uid);
+
+}
+
+function isActiveOperator() {
+
+  return isSignedIn() &&
+         exists(operatorMemberPath()) &&
+         get(operatorMemberPath()).data.userId ==
+           request.auth.uid &&
+         get(operatorMemberPath()).data.status ==
+           "active";
+
+}
+
+function operatorCompanyId() {
+
+  return get(operatorMemberPath()).data.companyId;
+
+}
+
+function belongsToOperatorCompany(companyId) {
+
+  return isActiveOperator() &&
+         operatorCompanyId() == companyId;
+
+}
+
+// ========================================
+
+// User Profile Validation
+
+// ========================================
 
     function isPassengerProfile() {
       return request.resource.data.role == "passenger";
@@ -70,6 +121,29 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+// ========================================
+// Operator Memberships
+// ========================================
+//
+// Membership records are provisioned only
+// through trusted Zano administration.
+//
+// An authenticated operator may retrieve
+// their own membership record.
+//
+// Operators cannot create, modify or delete
+// memberships from the browser.
+// ========================================
+
+match /operatorMembers/{userId} {
+
+  allow get: if isOwner(userId);
+
+  allow list: if false;
+
+  allow create, update, delete: if false;
+
+}
     // ========================================
     // Passenger Bookings
     // ========================================
@@ -118,79 +192,349 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    // ========================================
-    // Trip Discovery
+     // ========================================
+    // Public Trip Discovery
     // ========================================
     //
-    // Passengers need read access to trip data
-    // for the Zano search/results experience.
-    // Writes remain backend/company controlled.
+    // Trip information is public so passengers
+    // can search and inspect trips before login.
+    //
+    // All writes remain server/operator controlled.
     // ========================================
 
-    match /trips/{tripId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if false;
-    }
+match /trips/{tripId} {
+
+  // ========================================
+  // Public Trip Reading
+  // ========================================
+
+  // Passengers and guests can browse trips.
+  allow get, list: if true;
+
+  // ========================================
+  // Operator Trip Creation
+  // ========================================
+  //
+  // A trip may be created only when:
+  //
+  // 1. The operator belongs to the company.
+  // 2. vehicleId is provided.
+  // 3. The selected vehicle exists.
+  // 4. The vehicle belongs to the same company.
+  // 5. The vehicle is active.
+  // ========================================
+
+  allow create: if
+
+  // ========================================
+  // Company Authorization
+  // ========================================
+
+  belongsToOperatorCompany(
+    request.resource.data.companyId
+  ) &&
+
+  // ========================================
+  // Required Trip Fields
+  // ========================================
+
+  request.resource.data.companyId is string &&
+  request.resource.data.vehicleId is string &&
+  request.resource.data.routeId is string &&
+
+  request.resource.data.origin is string &&
+  request.resource.data.destination is string &&
+
+  request.resource.data.departureTime is string &&
+  request.resource.data.arrivalTime is string &&
+
+  request.resource.data.busType is string &&
+
+  request.resource.data.fare is number &&
+  request.resource.data.fare >= 0 &&
+
+  request.resource.data.totalSeats is int &&
+  request.resource.data.totalSeats > 0 &&
+
+  request.resource.data.availableSeats is int &&
+  request.resource.data.availableSeats >= 0 &&
+  request.resource.data.availableSeats <=
+    request.resource.data.totalSeats &&
+
+  request.resource.data.bookingEnabled is bool &&
+  request.resource.data.status is string &&
+
+  // ========================================
+  // Vehicle Validation
+  // ========================================
+
+  exists(
+    /databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId)
+  ) &&
+
+  get(
+    /databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId)
+  ).data.companyId ==
+    request.resource.data.companyId &&
+
+  get(
+    /databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId)
+  ).data.status ==
+    "active" &&
+
+  // ========================================
+  // Vehicle Capacity Protection
+  // ========================================
+  //
+  // A 30-seat vehicle cannot publish a trip
+  // claiming to have 45 seats.
+  // ========================================
+
+    request.resource.data.totalSeats ==
+    get(
+      /databases/$(database)/documents/vehicles/$(request.resource.data.vehicleId)
+    ).data.seatCapacity &&
+
+  // ========================================
+  // Route Validation
+  // ========================================
+  //
+  // The selected route must exist and must
+  // belong to the same company as the trip.
+  // ========================================
+
+  exists(
+    /databases/$(database)/documents/routes/$(request.resource.data.routeId)
+  ) &&
+
+  get(
+    /databases/$(database)/documents/routes/$(request.resource.data.routeId)
+  ).data.companyId ==
+    request.resource.data.companyId &&
+
+  get(
+    /databases/$(database)/documents/routes/$(request.resource.data.routeId)
+  ).data.status ==
+    "active" &&
+
+  // The trip origin/destination must match
+  // the selected route.
+  request.resource.data.origin ==
+    get(
+      /databases/$(database)/documents/routes/$(request.resource.data.routeId)
+    ).data.origin &&
+
+  request.resource.data.destination ==
+    get(
+      /databases/$(database)/documents/routes/$(request.resource.data.routeId)
+    ).data.destination;
+
+  // ========================================
+  // Operator Trip Updates
+  // ========================================
+  //
+  // Existing trips remain editable by their
+  // own company.
+  //
+  // This deliberately continues supporting
+  // historical trips that were created before
+  // vehicleId was introduced.
+  // ========================================
+
+  allow update: if
+    belongsToOperatorCompany(
+      resource.data.companyId
+    ) &&
+
+    belongsToOperatorCompany(
+      request.resource.data.companyId
+    ) &&
+
+    request.resource.data.companyId ==
+      resource.data.companyId;
+
+  // ========================================
+  // Trip Deletion
+  // ========================================
+  //
+  // Trips are not physically deleted because
+  // bookings, payments and tickets may reference
+  // them. Trips will instead be cancelled or
+  // completed.
+  // ========================================
+
+  allow delete: if false;
+}
+
+   // ========================================
+// Routes
+// ========================================
+
+match /routes/{routeId} {
+
+  // Passengers and guests can read routes
+  // used for trip discovery.
+  allow get, list: if true;
+
+  // ========================================
+  // Operator Route Creation
+  // ========================================
+  //
+  // Operators may create routes only for
+  // their own transport company.
+  // ========================================
+
+  allow create: if
+    belongsToOperatorCompany(
+      request.resource.data.companyId
+    ) &&
+
+    request.resource.data.companyId is string &&
+    request.resource.data.origin is string &&
+    request.resource.data.destination is string &&
+    request.resource.data.status is string &&
+
+    request.resource.data.origin.size() > 0 &&
+    request.resource.data.destination.size() > 0 &&
+
+    request.resource.data.origin !=
+      request.resource.data.destination;
+
+  // ========================================
+  // Operator Route Updates
+  // ========================================
+  //
+  // An operator may update only routes
+  // belonging to their company.
+  //
+  // companyId cannot be changed.
+  // ========================================
+
+  allow update: if
+    belongsToOperatorCompany(
+      resource.data.companyId
+    ) &&
+
+    belongsToOperatorCompany(
+      request.resource.data.companyId
+    ) &&
+
+    request.resource.data.companyId ==
+      resource.data.companyId &&
+
+    request.resource.data.origin is string &&
+    request.resource.data.destination is string &&
+    request.resource.data.status is string &&
+
+    request.resource.data.origin.size() > 0 &&
+    request.resource.data.destination.size() > 0 &&
+
+    request.resource.data.origin !=
+      request.resource.data.destination;
+
+  // Routes may later be referenced by historical
+  // trips, bookings and tickets, so physical
+  // deletion is blocked. A route can instead
+  // be made inactive.
+  allow delete: if false;
+}
 
     // ========================================
-    // Routes
-    // ========================================
-
-    match /routes/{routeId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if false;
-    }
-
-    // ========================================
-    // Transport Companies
+    // Public Transport Companies
     // ========================================
 
     match /companies/{companyId} {
-      allow get, list: if isSignedIn();
+      allow get, list: if true;
       allow create, update, delete: if false;
     }
 
     // ========================================
-    // Vehicles
-    // ========================================
+// Public Vehicle Information
+// ========================================
 
-    match /vehicles/{vehicleId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if false;
-    }
+match /vehicles/{vehicleId} {
+
+  // Passengers and guests may view vehicle
+  // information used by published trips.
+  allow get, list: if true;
+
+  // ========================================
+  // Operator Vehicle Creation
+  // ========================================
+  //
+  // The authenticated operator may create a
+  // vehicle only for their assigned company.
+  // ========================================
+
+  allow create: if
+    belongsToOperatorCompany(
+      request.resource.data.companyId
+    );
+
+  // ========================================
+  // Operator Vehicle Updates
+  // ========================================
+  //
+  // The existing vehicle must belong to the
+  // operator's company.
+  //
+  // The new document must still belong to the
+  // same company so companyId cannot be changed.
+  // ========================================
+
+  allow update: if
+    belongsToOperatorCompany(
+      resource.data.companyId
+    ) &&
+    belongsToOperatorCompany(
+      request.resource.data.companyId
+    ) &&
+    request.resource.data.companyId ==
+      resource.data.companyId;
+
+  // ========================================
+  // Vehicle Deletion
+  // ========================================
+  //
+  // Physical deletion stays blocked because a
+  // vehicle may already be referenced by trips,
+  // bookings or historical passenger records.
+  //
+  // Operators will deactivate vehicles instead.
+  // ========================================
+
+  allow delete: if false;
+}
 
     // ========================================
-    // Seat Availability
+    // Public Seat Layout
     // ========================================
     //
-    // Passengers may inspect seat availability.
-    // They cannot directly reserve/book seats.
-    // Secure backend transactions will handle that.
+    // Passengers may inspect seat layouts before
+    // login but cannot reserve or modify seats.
     // ========================================
 
     match /seats/{seatId} {
-  allow get, list: if isSignedIn();
-  allow create, update, delete: if false;
-}
+      allow get, list: if true;
+      allow create, update, delete: if false;
+    }
 
-// ========================================
-// Date-Specific Seat Inventory
-// ========================================
-//
-// Signed-in passengers may read seat availability
-// for recurring trips on a specific travel date.
-//
-// Passengers cannot create, reserve, book,
-// update, or delete inventory directly.
-//
-// All inventory writes are handled securely
-// by the server-side booking/payment transaction.
-// ========================================
+    // ========================================
+    // Public Date-Specific Seat Availability
+    // ========================================
+    //
+    // Passengers may inspect availability for a
+    // selected journey date before login.
+    //
+    // Inventory cannot be created, reserved,
+    // booked, updated, or deleted by the client.
+    // Secure server-side booking handles writes.
+    // ========================================
 
-match /tripSeatInventory/{inventoryId} {
-  allow get, list: if isSignedIn();
-  allow create, update, delete: if false;
-}
+    match /tripSeatInventory/{inventoryId} {
+      allow get, list: if true;
+      allow create, update, delete: if false;
+    }
 
 // ========================================
 // Payments

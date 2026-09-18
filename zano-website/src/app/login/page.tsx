@@ -34,6 +34,33 @@ export default function LoginPage() {
   const router = useRouter();
 
   // ========================================
+  // Safe Return URL
+  // ========================================
+
+  function getReturnUrl() {
+    if (typeof window === "undefined") {
+      return "/passenger/dashboard";
+    }
+
+    const searchParams = new URLSearchParams(
+      window.location.search
+    );
+
+    const requestedReturnUrl =
+      searchParams.get("returnUrl");
+
+    if (
+      requestedReturnUrl &&
+      requestedReturnUrl.startsWith("/") &&
+      !requestedReturnUrl.startsWith("//")
+    ) {
+      return requestedReturnUrl;
+    }
+
+    return "/passenger/dashboard";
+  }
+
+  // ========================================
   // Form State
   // ========================================
 
@@ -105,7 +132,7 @@ export default function LoginPage() {
       // Redirect
       // ========================================
 
-      router.replace("/passenger/dashboard");
+      router.replace(getReturnUrl());
     } catch (error) {
       setMessage(getLoginErrorMessage(error));
     } finally {
@@ -179,7 +206,7 @@ export default function LoginPage() {
       // Redirect
       // ========================================
 
-      router.replace("/passenger/dashboard");
+      router.replace(getReturnUrl());
     } catch (error) {
       setMessage(getLoginErrorMessage(error));
     } finally {
