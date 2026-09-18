@@ -3,16 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import {
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { useCallback, useEffect, useState } from "react";
 import QRCode from "qrcode";
-import {
-  onAuthStateChanged,
-  type User,
-} from "firebase/auth";
+import { onAuthStateChanged, type User } from "firebase/auth";
 
 import { auth } from "@/lib/firebase/client";
 
@@ -85,24 +78,17 @@ export default function DigitalTicketPage() {
   }>();
 
   const bookingId =
-    typeof params.bookingId === "string"
-      ? params.bookingId
-      : "";
+    typeof params.bookingId === "string" ? params.bookingId : "";
 
-  const [ticket, setTicket] =
-    useState<Ticket | null>(null);
+  const [ticket, setTicket] = useState<Ticket | null>(null);
 
-  const [qrCode, setQrCode] =
-    useState("");
+  const [qrCode, setQrCode] = useState("");
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const [error, setError] =
-    useState("");
+  const [error, setError] = useState("");
 
-  const [shareMessage, setShareMessage] =
-    useState("");
+  const [shareMessage, setShareMessage] = useState("");
 
   /* ========================================
      Load Authoritative Ticket
@@ -111,68 +97,48 @@ export default function DigitalTicketPage() {
   const loadTicket = useCallback(
     async (user: User) => {
       if (!bookingId) {
-        throw new Error(
-          "Booking information is missing."
-        );
+        throw new Error("Booking information is missing.");
       }
 
-      const idToken =
-        await user.getIdToken();
+      const idToken = await user.getIdToken();
 
       const response = await fetch(
-        `/api/bookings/${encodeURIComponent(
-          bookingId
-        )}/ticket`,
+        `/api/bookings/${encodeURIComponent(bookingId)}/ticket`,
         {
           method: "GET",
 
           headers: {
-            Authorization:
-              `Bearer ${idToken}`,
+            Authorization: `Bearer ${idToken}`,
           },
 
           cache: "no-store",
-        }
+        },
       );
 
-      const data =
-        (await response.json()) as
-          TicketResponse;
+      const data = (await response.json()) as TicketResponse;
 
       if (!response.ok) {
-        throw new Error(
-          data.error ||
-            "We could not load your digital ticket."
-        );
+        throw new Error(data.error || "We could not load your digital ticket.");
       }
 
-      if (
-        !data.ticket ||
-        !data.qrPayload
-      ) {
-        throw new Error(
-          "The ticket response is incomplete."
-        );
+      if (!data.ticket || !data.qrPayload) {
+        throw new Error("The ticket response is incomplete.");
       }
 
       /* ========================================
          Generate QR Code
       ======================================== */
 
-      const qrDataUrl =
-        await QRCode.toDataURL(
-          data.qrPayload,
-          {
-            width: 420,
-            margin: 2,
-            errorCorrectionLevel: "H",
-          }
-        );
+      const qrDataUrl = await QRCode.toDataURL(data.qrPayload, {
+        width: 420,
+        margin: 2,
+        errorCorrectionLevel: "H",
+      });
 
       setTicket(data.ticket);
       setQrCode(qrDataUrl);
     },
-    [bookingId]
+    [bookingId],
   );
 
   /* ========================================
@@ -182,58 +148,38 @@ export default function DigitalTicketPage() {
   useEffect(() => {
     let cancelled = false;
 
-    const unsubscribe =
-      onAuthStateChanged(
-        auth,
-        async (user) => {
-          if (!user) {
-            const returnUrl =
-              `/passenger/bookings/${bookingId}/ticket`;
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        const returnUrl = `/passenger/bookings/${bookingId}/ticket`;
 
-            router.replace(
-              `/login?returnUrl=${encodeURIComponent(
-                returnUrl
-              )}`
-            );
+        router.replace(`/login?returnUrl=${encodeURIComponent(returnUrl)}`);
 
-            return;
-          }
+        return;
+      }
 
-          try {
-            setLoading(true);
-            setError("");
+      try {
+        setLoading(true);
+        setError("");
 
-            await loadTicket(user);
-          } catch (loadError) {
-            console.error(
-              "Digital ticket error:",
-              loadError
-            );
+        await loadTicket(user);
+      } catch (loadError) {
+        console.error("Digital ticket error:", loadError);
 
-            if (!cancelled) {
-              setError(
-                getErrorMessage(
-                  loadError
-                )
-              );
-            }
-          } finally {
-            if (!cancelled) {
-              setLoading(false);
-            }
-          }
+        if (!cancelled) {
+          setError(getErrorMessage(loadError));
         }
-      );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    });
 
     return () => {
       cancelled = true;
       unsubscribe();
     };
-  }, [
-    bookingId,
-    loadTicket,
-    router,
-  ]);
+  }, [bookingId, loadTicket, router]);
 
   /* ========================================
      Share Ticket
@@ -252,69 +198,43 @@ export default function DigitalTicketPage() {
       `Ticket: ${ticket.ticketNumber}`,
       `Booking: ${ticket.bookingReference}`,
       `Seat${
-        ticket.seatNumbers.length > 1
-          ? "s"
-          : ""
+        ticket.seatNumbers.length > 1 ? "s" : ""
       }: ${ticket.seatNumbers.join(", ")}`,
-      `Departure: ${formatDateTime(
-        ticket.departureAt
-      )}`,
+      `Departure: ${formatDateTime(ticket.departureAt)}`,
     ].join("\n");
 
     try {
-      if (
-        typeof navigator !==
-          "undefined" &&
-        navigator.share
-      ) {
+      if (typeof navigator !== "undefined" && navigator.share) {
         await navigator.share({
           title: "Zano Digital Ticket",
           text: shareText,
         });
 
-        setShareMessage(
-          "Ticket shared successfully."
-        );
+        setShareMessage("Ticket shared successfully.");
 
         return;
       }
 
-      if (
-        typeof navigator !==
-          "undefined" &&
-        navigator.clipboard
-      ) {
-        await navigator.clipboard.writeText(
-          shareText
-        );
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(shareText);
 
-        setShareMessage(
-          "Ticket details copied."
-        );
+        setShareMessage("Ticket details copied.");
 
         return;
       }
 
-      setShareMessage(
-        "Sharing is not supported by this browser."
-      );
+      setShareMessage("Sharing is not supported by this browser.");
     } catch (shareError) {
       if (
-        shareError instanceof
-          DOMException &&
+        shareError instanceof DOMException &&
         shareError.name === "AbortError"
       ) {
         return;
       }
 
-      console.error(
-        "Ticket share error:",
-        shareError
-      );
+      console.error("Ticket share error:", shareError);
 
-      setShareMessage(
-        "Unable to share the ticket."
-      );
+      setShareMessage("Unable to share the ticket.");
     }
   }
 
@@ -341,8 +261,7 @@ export default function DigitalTicketPage() {
           </h1>
 
           <p className="mt-2 text-sm leading-6 text-[#747680]">
-            Verifying your booking and
-            preparing your digital ticket.
+            Verifying your booking and preparing your digital ticket.
           </p>
         </div>
       </main>
@@ -366,8 +285,7 @@ export default function DigitalTicketPage() {
           </h1>
 
           <p className="mt-3 text-sm leading-6 text-[#747680]">
-            {error ||
-              "We could not load your digital ticket."}
+            {error || "We could not load your digital ticket."}
           </p>
 
           <Link
@@ -428,10 +346,8 @@ export default function DigitalTicketPage() {
           </h1>
 
           <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-[#747680]">
-            Keep this ticket available
-            when boarding. Your QR code
-            identifies your confirmed
-            Zano booking.
+            Keep this ticket available when boarding. Your QR code identifies
+            your confirmed Zano booking.
           </p>
         </section>
 
@@ -451,9 +367,7 @@ export default function DigitalTicketPage() {
                   Digital Ticket
                 </p>
 
-                <p className="mt-2 text-lg font-bold">
-                  {ticket.ticketNumber}
-                </p>
+                <p className="mt-2 text-lg font-bold">{ticket.ticketNumber}</p>
               </div>
 
               <span className="rounded-full bg-[#e9f8ef] px-4 py-2 text-xs font-bold uppercase tracking-wide text-[#15803d]">
@@ -483,9 +397,7 @@ export default function DigitalTicketPage() {
 
                 <div className="h-px flex-1 border-t border-dashed border-[#b8bac4]" />
 
-                <span className="px-2 text-lg text-[#ff7417]">
-                  →
-                </span>
+                <span className="px-2 text-lg text-[#ff7417]">→</span>
 
                 <div className="h-px flex-1 border-t border-dashed border-[#b8bac4]" />
 
@@ -510,32 +422,20 @@ export default function DigitalTicketPage() {
             <div className="mt-7 grid grid-cols-2 gap-4 border-t border-[#eeeeF2] py-6 sm:grid-cols-4">
               <TicketInfo
                 label="Travel Date"
-                value={formatDate(
-                  ticket.departureAt
-                )}
+                value={formatDate(ticket.departureAt)}
               />
 
               <TicketInfo
                 label="Departure"
-                value={formatTime(
-                  ticket.departureAt
-                )}
+                value={formatTime(ticket.departureAt)}
               />
 
               <TicketInfo
                 label="Arrival"
-                value={formatTime(
-                  ticket.arrivalAt
-                )}
+                value={formatTime(ticket.arrivalAt)}
               />
 
-              <TicketInfo
-                label="Bus"
-                value={
-                  ticket.busType ||
-                  "Coach"
-                }
-              />
+              <TicketInfo label="Bus" value={ticket.busType || "Coach"} />
             </div>
           </section>
 
@@ -563,45 +463,28 @@ export default function DigitalTicketPage() {
                 </p>
 
                 <h3 className="mt-2 text-xl font-bold text-[#002451]">
-                  {ticket.companyName ||
-                    "Zano Partner"}
+                  {ticket.companyName || "Zano Partner"}
                 </h3>
 
                 <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-5">
                   <TicketInfo
                     label="Booking Reference"
-                    value={
-                      ticket.bookingReference
-                    }
+                    value={ticket.bookingReference}
                   />
 
                   <TicketInfo
                     label="Passengers"
-                    value={String(
-                      ticket.passengerCount
-                    )}
+                    value={String(ticket.passengerCount)}
                   />
 
                   <TicketInfo
-                    label={
-                      ticket.seatNumbers
-                        .length > 1
-                        ? "Seats"
-                        : "Seat"
-                    }
-                    value={
-                      ticket.seatNumbers.join(
-                        ", "
-                      ) || "—"
-                    }
+                    label={ticket.seatNumbers.length > 1 ? "Seats" : "Seat"}
+                    value={ticket.seatNumbers.join(", ") || "—"}
                   />
 
                   <TicketInfo
                     label="Amount Paid"
-                    value={formatMoney(
-                      ticket.totalAmount,
-                      ticket.currency
-                    )}
+                    value={formatMoney(ticket.totalAmount, ticket.currency)}
                   />
                 </div>
               </div>
@@ -643,42 +526,34 @@ export default function DigitalTicketPage() {
             </p>
 
             <div className="mt-4 divide-y divide-[#eeeeF2]">
-              {ticket.passengers.map(
-                (passenger, index) => (
-                  <div
-                    key={`${passenger.seatId}-${index}`}
-                    className="flex items-center justify-between gap-5 py-4"
-                  >
-                    <div>
-                      <p className="font-bold text-[#002451]">
-                        {passenger.fullName ||
-                          `Passenger ${
-                            index + 1
-                          }`}
-                      </p>
+              {ticket.passengers.map((passenger, index) => (
+                <div
+                  key={`${passenger.seatId}-${index}`}
+                  className="flex items-center justify-between gap-5 py-4"
+                >
+                  <div>
+                    <p className="font-bold text-[#002451]">
+                      {passenger.fullName || `Passenger ${index + 1}`}
+                    </p>
 
-                      {passenger.phoneNumber && (
-                        <p className="mt-1 text-xs text-[#747680]">
-                          {
-                            passenger.phoneNumber
-                          }
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="rounded-xl bg-[#fff1e7] px-5 py-2 text-center">
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[#9a5a2c]">
-                        Seat
+                    {passenger.phoneNumber && (
+                      <p className="mt-1 text-xs text-[#747680]">
+                        {passenger.phoneNumber}
                       </p>
-
-                      <p className="mt-0.5 text-base font-bold text-[#ff7417]">
-                        {passenger.seatNumber ||
-                          "—"}
-                      </p>
-                    </div>
+                    )}
                   </div>
-                )
-              )}
+
+                  <div className="rounded-xl bg-[#fff1e7] px-5 py-2 text-center">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[#9a5a2c]">
+                      Seat
+                    </p>
+
+                    <p className="mt-0.5 text-base font-bold text-[#ff7417]">
+                      {passenger.seatNumber || "—"}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
 
@@ -688,25 +563,16 @@ export default function DigitalTicketPage() {
 
           <section className="border-t border-[#eeeeF2] bg-[#fafafd] px-6 py-6 sm:px-8">
             <div className="grid gap-5 sm:grid-cols-3">
-              <TicketInfo
-                label="Ticket Number"
-                value={
-                  ticket.ticketNumber
-                }
-              />
+              <TicketInfo label="Ticket Number" value={ticket.ticketNumber} />
 
               <TicketInfo
                 label="Payment Reference"
-                value={
-                  ticket.paymentReference
-                }
+                value={ticket.paymentReference}
               />
 
               <TicketInfo
                 label="Issued"
-                value={formatDateTime(
-                  ticket.issuedAt
-                )}
+                value={formatDateTime(ticket.issuedAt)}
               />
             </div>
           </section>
@@ -745,16 +611,17 @@ export default function DigitalTicketPage() {
         </section>
 
         {/* ========================================
-            Live Tracking Placeholder
-        ======================================== */}
+    Live Trip Tracking
+======================================== */}
 
-        <button
-          type="button"
-          disabled
-          className="mt-3 flex w-full cursor-not-allowed items-center justify-center rounded-xl bg-[#e8e9ee] px-5 py-4 text-sm font-bold text-[#92959f] print:hidden"
+        <Link
+          href={`/passenger/tracking?bookingId=${encodeURIComponent(
+            ticket.bookingId,
+          )}`}
+          className="mt-3 flex w-full items-center justify-center rounded-xl bg-[#002451] px-5 py-4 text-sm font-bold text-white transition hover:bg-[#003a7a] print:hidden"
         >
-          Track Bus — Coming Soon
-        </button>
+          Track Trip
+        </Link>
 
         {/* ========================================
             Navigation
@@ -768,9 +635,7 @@ export default function DigitalTicketPage() {
             Booking Confirmation
           </Link>
 
-          <span className="text-[#c5c7cf]">
-            •
-          </span>
+          <span className="text-[#c5c7cf]">•</span>
 
           <Link
             href={`/passenger/bookings/${ticket.bookingId}/receipt`}
@@ -779,9 +644,7 @@ export default function DigitalTicketPage() {
             Payment Receipt
           </Link>
 
-          <span className="text-[#c5c7cf]">
-            •
-          </span>
+          <span className="text-[#c5c7cf]">•</span>
 
           <Link
             href="/passenger/dashboard"
@@ -799,13 +662,7 @@ export default function DigitalTicketPage() {
    Ticket Information
 ======================================== */
 
-function TicketInfo({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function TicketInfo({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#92959f]">
@@ -823,9 +680,7 @@ function TicketInfo({
    Error Helper
 ======================================== */
 
-function getErrorMessage(
-  error: unknown
-): string {
+function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
@@ -837,107 +692,80 @@ function getErrorMessage(
    Date Parser
 ======================================== */
 
-function parseDate(
-  value: string | null
-): Date | null {
+function parseDate(value: string | null): Date | null {
   if (!value) {
     return null;
   }
 
   const date = new Date(value);
 
-  return Number.isNaN(
-    date.getTime()
-  )
-    ? null
-    : date;
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 /* ========================================
    Date Formatter
 ======================================== */
 
-function formatDate(
-  value: string | null
-): string {
+function formatDate(value: string | null): string {
   const date = parseDate(value);
 
   if (!date) {
     return "—";
   }
 
-  return new Intl.DateTimeFormat(
-    "en-GH",
-    {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      timeZone: "Africa/Accra",
-    }
-  ).format(date);
+  return new Intl.DateTimeFormat("en-GH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Africa/Accra",
+  }).format(date);
 }
 
 /* ========================================
    Time Formatter
 ======================================== */
 
-function formatTime(
-  value: string | null
-): string {
+function formatTime(value: string | null): string {
   const date = parseDate(value);
 
   if (!date) {
     return "—";
   }
 
-  return new Intl.DateTimeFormat(
-    "en-GH",
-    {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-      timeZone: "Africa/Accra",
-    }
-  ).format(date);
+  return new Intl.DateTimeFormat("en-GH", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "Africa/Accra",
+  }).format(date);
 }
 
 /* ========================================
    Date + Time Formatter
 ======================================== */
 
-function formatDateTime(
-  value: string | null
-): string {
+function formatDateTime(value: string | null): string {
   const date = parseDate(value);
 
   if (!date) {
     return "—";
   }
 
-  return new Intl.DateTimeFormat(
-    "en-GH",
-    {
-      dateStyle: "medium",
-      timeStyle: "short",
-      timeZone: "Africa/Accra",
-    }
-  ).format(date);
+  return new Intl.DateTimeFormat("en-GH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Africa/Accra",
+  }).format(date);
 }
 
 /* ========================================
    Money Formatter
 ======================================== */
 
-function formatMoney(
-  amount: number,
-  currency = "GHS"
-): string {
-  return new Intl.NumberFormat(
-    "en-GH",
-    {
-      style: "currency",
-      currency,
-      minimumFractionDigits: 2,
-    }
-  ).format(amount);
+function formatMoney(amount: number, currency = "GHS"): string {
+  return new Intl.NumberFormat("en-GH", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+  }).format(amount);
 }
