@@ -28,7 +28,7 @@ type ChatMessage = {
 const SUGGESTED_PROMPTS = [
   "Find a bus from Accra to Kumasi tomorrow morning",
   "What's the cheapest trip to Takoradi?",
-  "I'm in Nkawkaw, what buses pass through here?",
+  "What buses are available today?",
   "Where can I board near Kumasi?",
 ];
 
@@ -77,7 +77,7 @@ function TripResultCard({ trip }: { trip: TripCard }) {
   }
 
   return (
-    <div className="w-[230px] flex-shrink-0 rounded-xl border border-[#c8cad4] bg-white p-3 shadow-sm">
+    <div className="w-[245px] flex-shrink-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <p className="truncate text-xs font-black text-[#002451]">
           {trip.companyName}
@@ -92,11 +92,11 @@ function TripResultCard({ trip }: { trip: TripCard }) {
         {formatTime(trip.departureAt)} → {formatTime(trip.arrivalAt)}
       </p>
 
-      <p className="mt-1 text-[11px] text-[#747680]">
+      <p className="mt-1 text-[11px] text-slate-500">
         {trip.origin} → {trip.destination}
       </p>
 
-      <p className="text-[11px] text-[#747680]">
+      <p className="text-[11px] text-slate-500">
         {formatDuration(trip.durationMinutes)}
       </p>
 
@@ -105,22 +105,22 @@ function TripResultCard({ trip }: { trip: TripCard }) {
           {formatMoney(trip.fare)}
         </p>
 
-        <p className="text-[10px] text-[#747680]">
+        <p className="text-[10px] text-slate-500">
           {trip.availableSeats} seats
         </p>
       </div>
 
       {trip.boardingPoints?.length > 0 && (
-        <p className="mt-2 truncate text-[10px] text-[#747680]">
+        <p className="mt-2 truncate text-[10px] text-slate-500">
           Boarding: {trip.boardingPoints.join(", ")}
         </p>
       )}
 
       <Link
         href={`/trips/${trip.id}?${params.toString()}`}
-        className="mt-3 flex h-9 items-center justify-center rounded-lg bg-[#ff7417] text-xs font-black text-white hover:bg-[#e96308]"
+        className="mt-3 flex h-9 items-center justify-center rounded-xl bg-[#ff7417] text-xs font-black text-white transition hover:bg-[#e96308]"
       >
-        View trip
+        Select trip
       </Link>
     </div>
   );
@@ -131,6 +131,21 @@ export default function ZanoAssistant() {
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  // Position of the floating Zano button/window
+  const [position, setPosition] = useState({
+    right: 20,
+    bottom: 20,
+  });
+
+  const [isDragging, setIsDragging] = useState(false);
+
+  const dragStart = useRef({
+    x: 0,
+    y: 0,
+    right: 20,
+    bottom: 20,
+  });
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -147,6 +162,63 @@ export default function ZanoAssistant() {
     });
   }, [messages, isSending]);
 
+  useEffect(() => {
+    if (!isDragging) {
+      return;
+    }
+
+    function handlePointerMove(event: PointerEvent) {
+      const deltaX = event.clientX - dragStart.current.x;
+      const deltaY = event.clientY - dragStart.current.y;
+
+      const newRight = Math.max(
+        10,
+        Math.min(
+          window.innerWidth - 80,
+          dragStart.current.right - deltaX
+        )
+      );
+
+      const newBottom = Math.max(
+        10,
+        Math.min(
+          window.innerHeight - 80,
+          dragStart.current.bottom - deltaY
+        )
+      );
+
+      setPosition({
+        right: newRight,
+        bottom: newBottom,
+      });
+    }
+
+    function handlePointerUp() {
+      setIsDragging(false);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [isDragging]);
+
+  function startDragging(event: React.PointerEvent) {
+    event.preventDefault();
+
+    dragStart.current = {
+      x: event.clientX,
+      y: event.clientY,
+      right: position.right,
+      bottom: position.bottom,
+    };
+
+    setIsDragging(true);
+  }
+
   async function sendMessage(text: string) {
     const trimmed = text.trim();
 
@@ -160,69 +232,53 @@ export default function ZanoAssistant() {
       content: trimmed,
     };
 
+    const conversation = [
+      ...messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
+      {
+        role: "user" as const,
+        content: trimmed,
+      },
+    ];
+
     setMessages((current) => [...current, userMessage]);
     setInput("");
     setIsSending(true);
 
     try {
       const response = await fetch("/api/ai/chat", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    messages: [
-      ...messages.map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
-      {
-        role: "user",
-        content: trimmed,
-      },
-    ],
-  }),
-});
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: conversation,
+        }),
+      });
 
-const responseText = await response.text();
+      const responseText = await response.text();
 
-let data: {
-  reply?: string;
-  trips?: TripCard[];
-  error?: string;
-};
+      let data: {
+        reply?: string;
+        trips?: TripCard[];
+        error?: string;
+      } = {};
 
-try {
-  data = responseText
-    ? JSON.parse(responseText)
-    : {};
-} catch {
-  throw new Error(
-    `Zano AI returned an invalid response (${response.status}).`
-  );
-}
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        throw new Error(
+          `Zano AI returned an invalid response (${response.status}).`
+        );
+      }
 
-if (!response.ok) {
-  throw new Error(
-    data.error || `Zano AI request failed (${response.status}).`
-  );
-}
-
-try {
-  data = responseText
-    ? JSON.parse(responseText)
-    : {};
-} catch {
-  throw new Error(
-    `Zano AI returned an invalid response (${response.status}).`
-  );
-}
-
-if (!response.ok) {
-  throw new Error(
-    data.error || `Zano AI request failed (${response.status}).`
-  );
-}
+      if (!response.ok) {
+        throw new Error(
+          data.error || `Zano AI request failed (${response.status}).`
+        );
+      }
 
       const assistantMessage: ChatMessage = {
         id: createId(),
@@ -258,127 +314,213 @@ if (!response.ok) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setIsOpen((current) => !current)}
-        aria-label={isOpen ? "Close Zano AI" : "Open Zano AI"}
-        className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#ff7417] text-white shadow-xl transition hover:bg-[#e96308]"
+      {/* Floating Zano button */}
+      <div
+        className="fixed z-[9999]"
+        style={{
+          right: `${position.right}px`,
+          bottom: `${position.bottom}px`,
+        }}
       >
-        {isOpen ? (
-          <span className="text-2xl">×</span>
-        ) : (
-          <span className="text-lg font-black">Z</span>
-        )}
-      </button>
+        <button
+          type="button"
+          onPointerDown={startDragging}
+          onClick={() => {
+            if (!isDragging) {
+              setIsOpen((current) => !current);
+            }
+          }}
+          aria-label={isOpen ? "Close Zano AI" : "Open Zano AI"}
+          className={`group relative flex h-[68px] min-w-[68px] items-center justify-center gap-1 rounded-full border-2 border-white bg-[#002451] px-4 text-white shadow-2xl transition ${
+            isDragging
+              ? "scale-105 cursor-grabbing"
+              : "cursor-grab hover:scale-105"
+          }`}
+        >
+          {/* Robot */}
+          <span className="text-2xl leading-none transition group-hover:scale-110">
+            🤖
+          </span>
 
-      {isOpen && (
-        <div className="fixed bottom-24 right-5 z-50 flex h-[70vh] max-h-[600px] w-[92vw] max-w-[390px] flex-col overflow-hidden rounded-2xl border border-[#c8cad4] bg-white shadow-2xl">
-          <div className="flex items-center gap-3 bg-[#002451] px-4 py-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#ff7417] font-black text-white">
-              Z
-            </div>
+          {/* Zano text */}
+          <span className="text-sm font-black tracking-tight">
+            Zano
+          </span>
 
-            <div>
-              <p className="text-sm font-black text-white">
-                Zano AI Assistant
-              </p>
+          {/* Online indicator */}
+          <span className="absolute right-1 top-1 h-3 w-3 rounded-full border-2 border-[#002451] bg-[#39d353]" />
+        </button>
 
-              <p className="text-[11px] text-[#39b5f4]">
-                Your travel assistant
-              </p>
-            </div>
-          </div>
-
-          <div
-            ref={scrollRef}
-            className="flex-1 overflow-y-auto bg-[#f8f7ff] px-3 py-4"
-          >
-            {messages.length === 0 && (
-              <div>
-                <p className="text-sm leading-6 text-[#747680]">
-                  Hi! I&apos;m the Zano AI Assistant. I can help you find
-                  trips, compare fares, check availability and plan your
-                  journey.
-                </p>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {SUGGESTED_PROMPTS.map((prompt) => (
-                    <button
-                      key={prompt}
-                      type="button"
-                      onClick={() => void sendMessage(prompt)}
-                      className="rounded-full border border-[#c8cad4] bg-white px-3 py-2 text-left text-[11px] font-semibold text-[#002451] hover:border-[#ff7417] hover:text-[#ff7417]"
-                    >
-                      {prompt}
-                    </button>
-                  ))}
-                </div>
+        {/* Assistant panel */}
+        {isOpen && (
+          <div className="absolute bottom-[82px] right-0 flex h-[70vh] max-h-[650px] w-[92vw] max-w-[410px] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_25px_80px_rgba(0,36,81,0.25)]">
+            {/* Header */}
+            <div
+              onPointerDown={startDragging}
+              className="flex cursor-grab items-center gap-3 bg-[#002451] px-4 py-4 text-white active:cursor-grabbing"
+            >
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#ff7417] text-2xl shadow-lg">
+                🤖
               </div>
-            )}
 
-            <div className="mt-4 space-y-4">
-              {messages.map((message) => (
-                <div key={message.id}>
-                  <div
-                    className={
-                      message.role === "user"
-                        ? "flex justify-end"
-                        : "flex justify-start"
-                    }
-                  >
-                    <div
-                      className={
-                        message.role === "user"
-                          ? "max-w-[85%] rounded-2xl rounded-br-sm bg-[#ff7417] px-4 py-3 text-sm text-white"
-                          : "max-w-[85%] rounded-2xl rounded-bl-sm border border-[#c8cad4] bg-white px-4 py-3 text-sm text-[#10172a]"
-                      }
-                    >
-                      {message.content}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-base font-black">Zano</p>
+
+                  <span className="rounded-full bg-[#39d353]/15 px-2 py-0.5 text-[9px] font-bold text-[#39d353]">
+                    AI
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-slate-300">
+                  Your personal travel assistant
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-lg transition hover:bg-white/20"
+                aria-label="Close Zano"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Chat */}
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto bg-[#f7f9fc] px-3 py-4"
+            >
+              {messages.length === 0 && (
+                <div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex gap-3">
+                      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-[#002451] text-lg">
+                        🤖
+                      </div>
+
+                      <div>
+                        <p className="text-sm font-black text-[#002451]">
+                          Hello! I&apos;m Zano 👋
+                        </p>
+
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          I can help you find buses, compare fares,
+                          check seats, find boarding points and plan
+                          your journey.
+                        </p>
+                      </div>
                     </div>
                   </div>
 
-                  {message.trips && message.trips.length > 0 && (
-                    <div className="mt-3 flex gap-2 overflow-x-auto pb-2">
-                      {message.trips.map((trip) => (
-                        <TripResultCard key={trip.id} trip={trip} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+                  <p className="mb-2 mt-5 px-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Try asking me
+                  </p>
 
-              {isSending && (
-                <div className="flex justify-start">
-                  <div className="rounded-2xl border border-[#c8cad4] bg-white px-4 py-3 text-sm text-[#747680]">
-                    Zano is thinking...
+                  <div className="flex flex-wrap gap-2">
+                    {SUGGESTED_PROMPTS.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() => void sendMessage(prompt)}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-[11px] font-semibold text-[#002451] shadow-sm transition hover:-translate-y-0.5 hover:border-[#ff7417] hover:text-[#ff7417]"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
+
+              <div className="mt-4 space-y-4">
+                {messages.map((message) => (
+                  <div key={message.id}>
+                    <div
+                      className={
+                        message.role === "user"
+                          ? "flex justify-end"
+                          : "flex justify-start"
+                      }
+                    >
+                      {message.role === "assistant" && (
+                        <div className="mr-2 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-[#002451] text-sm">
+                          🤖
+                        </div>
+                      )}
+
+                      <div
+                        className={
+                          message.role === "user"
+                            ? "max-w-[82%] rounded-2xl rounded-br-sm bg-[#ff7417] px-4 py-3 text-sm leading-6 text-white shadow-sm"
+                            : "max-w-[82%] rounded-2xl rounded-bl-sm border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-[#10172a] shadow-sm"
+                        }
+                      >
+                        {message.content}
+                      </div>
+                    </div>
+
+                    {message.trips && message.trips.length > 0 && (
+                      <div className="mt-3 flex gap-2 overflow-x-auto pb-2 pl-10">
+                        {message.trips.map((trip) => (
+                          <TripResultCard
+                            key={trip.id}
+                            trip={trip}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {isSending && (
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#002451] text-sm">
+                      🤖
+                    </div>
+
+                    <div className="rounded-2xl rounded-bl-sm border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                      <div className="flex items-center gap-1">
+                        <span className="h-2 w-2 animate-bounce rounded-full bg-[#ff7417]" />
+                        <span
+                          className="h-2 w-2 animate-bounce rounded-full bg-[#ff7417]"
+                          style={{ animationDelay: "120ms" }}
+                        />
+                        <span
+                          className="h-2 w-2 animate-bounce rounded-full bg-[#ff7417]"
+                          style={{ animationDelay: "240ms" }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
 
-          <form
-            onSubmit={handleSubmit}
-            className="flex gap-2 border-t border-[#c8cad4] bg-white p-3"
-          >
-            <input
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              disabled={isSending}
-              placeholder="Ask about a trip..."
-              className="h-10 flex-1 rounded-full border border-[#c8cad4] bg-[#f8f7ff] px-4 text-sm outline-none focus:border-[#ff7417]"
-            />
-
-            <button
-              type="submit"
-              disabled={isSending || !input.trim()}
-              className="h-10 rounded-full bg-[#ff7417] px-4 text-sm font-black text-white hover:bg-[#e96308] disabled:cursor-not-allowed disabled:opacity-40"
+            {/* Input */}
+            <form
+              onSubmit={handleSubmit}
+              className="flex gap-2 border-t border-slate-200 bg-white p-3"
             >
-              Send
-            </button>
-          </form>
-        </div>
-      )}
+              <input
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                disabled={isSending}
+                placeholder="Ask Zano anything about your trip..."
+                className="h-11 min-w-0 flex-1 rounded-2xl border border-slate-200 bg-[#f7f9fc] px-4 text-sm text-[#10172a] outline-none transition placeholder:text-slate-400 focus:border-[#ff7417] focus:ring-2 focus:ring-[#ff7417]/10"
+              />
+
+              <button
+                type="submit"
+                disabled={isSending || !input.trim()}
+                className="h-11 rounded-2xl bg-[#ff7417] px-4 text-sm font-black text-white shadow-sm transition hover:bg-[#e96308] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Send
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
     </>
   );
 }
