@@ -3,15 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import {
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
-import {
-  onAuthStateChanged,
-  type User,
-} from "firebase/auth";
+import { useCallback, useEffect, useState } from "react";
+import { onAuthStateChanged, type User } from "firebase/auth";
 
 import { auth } from "@/lib/firebase/client";
 
@@ -94,18 +87,13 @@ export default function BookingDetailsPage() {
   }>();
 
   const bookingId =
-    typeof params.bookingId === "string"
-      ? params.bookingId
-      : "";
+    typeof params.bookingId === "string" ? params.bookingId : "";
 
-  const [booking, setBooking] =
-    useState<Booking | null>(null);
+  const [booking, setBooking] = useState<Booking | null>(null);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const [error, setError] =
-    useState("");
+  const [error, setError] = useState("");
 
   /* ========================================
      Load Booking
@@ -114,50 +102,37 @@ export default function BookingDetailsPage() {
   const loadBooking = useCallback(
     async (user: User) => {
       if (!bookingId) {
-        throw new Error(
-          "Booking information is missing."
-        );
+        throw new Error("Booking information is missing.");
       }
 
-      const idToken =
-        await user.getIdToken();
+      const idToken = await user.getIdToken();
 
       const response = await fetch(
-        `/api/bookings/${encodeURIComponent(
-          bookingId
-        )}`,
+        `/api/bookings/${encodeURIComponent(bookingId)}`,
         {
           method: "GET",
 
           headers: {
-            Authorization:
-              `Bearer ${idToken}`,
+            Authorization: `Bearer ${idToken}`,
           },
 
           cache: "no-store",
-        }
+        },
       );
 
-      const data =
-        (await response.json()) as
-          BookingResponse;
+      const data = (await response.json()) as BookingResponse;
 
       if (!response.ok) {
-        throw new Error(
-          data.error ||
-            "We could not load your booking."
-        );
+        throw new Error(data.error || "We could not load your booking.");
       }
 
       if (!data.booking) {
-        throw new Error(
-          "The booking response is incomplete."
-        );
+        throw new Error("The booking response is incomplete.");
       }
 
       setBooking(data.booking);
     },
-    [bookingId]
+    [bookingId],
   );
 
   /* ========================================
@@ -167,58 +142,38 @@ export default function BookingDetailsPage() {
   useEffect(() => {
     let cancelled = false;
 
-    const unsubscribe =
-      onAuthStateChanged(
-        auth,
-        async (user) => {
-          if (!user) {
-            const returnUrl =
-              `/passenger/bookings/${bookingId}`;
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        const returnUrl = `/passenger/bookings/${bookingId}`;
 
-            router.replace(
-              `/login?returnUrl=${encodeURIComponent(
-                returnUrl
-              )}`
-            );
+        router.replace(`/login?returnUrl=${encodeURIComponent(returnUrl)}`);
 
-            return;
-          }
+        return;
+      }
 
-          try {
-            setLoading(true);
-            setError("");
+      try {
+        setLoading(true);
+        setError("");
 
-            await loadBooking(user);
-          } catch (loadError) {
-            console.error(
-              "Booking details error:",
-              loadError
-            );
+        await loadBooking(user);
+      } catch (loadError) {
+        console.error("Booking details error:", loadError);
 
-            if (!cancelled) {
-              setError(
-                getErrorMessage(
-                  loadError
-                )
-              );
-            }
-          } finally {
-            if (!cancelled) {
-              setLoading(false);
-            }
-          }
+        if (!cancelled) {
+          setError(getErrorMessage(loadError));
         }
-      );
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    });
 
     return () => {
       cancelled = true;
       unsubscribe();
     };
-  }, [
-    bookingId,
-    loadBooking,
-    router,
-  ]);
+  }, [bookingId, loadBooking, router]);
 
   /* ========================================
      Loading
@@ -259,8 +214,7 @@ export default function BookingDetailsPage() {
           </h1>
 
           <p className="mt-3 text-sm leading-6 text-[#747680]">
-            {error ||
-              "We could not load this booking."}
+            {error || "We could not load this booking."}
           </p>
 
           <Link
@@ -274,17 +228,12 @@ export default function BookingDetailsPage() {
     );
   }
 
-  const isConfirmed =
-    booking.status.toLowerCase() ===
-    "confirmed";
+  const isConfirmed = booking.status.toLowerCase() === "confirmed";
 
   const paymentSuccessful =
-    booking.paymentStatus.toLowerCase() ===
-    "successful";
+    booking.paymentStatus.toLowerCase() === "successful";
 
-  const hasTicket =
-    Boolean(booking.ticketId) &&
-    Boolean(booking.ticketNumber);
+  const hasTicket = Boolean(booking.ticketId) && Boolean(booking.ticketNumber);
 
   return (
     <main className="min-h-screen bg-[#f8f7ff] pb-16">
@@ -323,9 +272,7 @@ export default function BookingDetailsPage() {
           href="/passenger/dashboard"
           className="inline-flex items-center gap-2 text-sm font-semibold text-[#002451]"
         >
-          <span aria-hidden="true">
-            ←
-          </span>
+          <span aria-hidden="true">←</span>
           Back to dashboard
         </Link>
 
@@ -340,25 +287,19 @@ export default function BookingDetailsPage() {
             </p>
 
             <h1 className="mt-2 text-3xl font-bold text-[#002451] sm:text-4xl">
-              {booking.origin}{" "}
-              <span className="text-[#ff7417]">
-                →
-              </span>{" "}
+              {booking.origin} <span className="text-[#ff7417]">→</span>{" "}
               {booking.destination}
             </h1>
 
             <p className="mt-2 text-sm text-[#747680]">
               Booking reference:{" "}
               <span className="font-bold text-[#002451]">
-                {booking.bookingReference ||
-                  booking.id}
+                {booking.bookingReference || booking.id}
               </span>
             </p>
           </div>
 
-          <StatusBadge
-            status={booking.status}
-          />
+          <StatusBadge status={booking.status} />
         </section>
 
         {/* ========================================
@@ -380,8 +321,7 @@ export default function BookingDetailsPage() {
                     </p>
 
                     <h2 className="mt-1 text-lg font-bold">
-                      {booking.companyName ||
-                        "Zano Partner"}
+                      {booking.companyName || "Zano Partner"}
                     </h2>
                   </div>
 
@@ -407,9 +347,7 @@ export default function BookingDetailsPage() {
                     </p>
 
                     <p className="mt-1 text-sm text-[#747680]">
-                      {formatTime(
-                        booking.departureAt
-                      )}
+                      {formatTime(booking.departureAt)}
                     </p>
                   </div>
 
@@ -418,9 +356,7 @@ export default function BookingDetailsPage() {
 
                     <div className="h-px flex-1 border-t border-dashed border-[#c5c7cf]" />
 
-                    <span className="px-2 text-[#ff7417]">
-                      →
-                    </span>
+                    <span className="px-2 text-[#ff7417]">→</span>
 
                     <div className="h-px flex-1 border-t border-dashed border-[#c5c7cf]" />
 
@@ -437,9 +373,7 @@ export default function BookingDetailsPage() {
                     </p>
 
                     <p className="mt-1 text-sm text-[#747680]">
-                      {formatTime(
-                        booking.arrivalAt
-                      )}
+                      {formatTime(booking.arrivalAt)}
                     </p>
                   </div>
                 </div>
@@ -449,30 +383,19 @@ export default function BookingDetailsPage() {
                 <div className="mt-7 grid grid-cols-2 gap-5 border-t border-[#eeeeF2] pt-6 sm:grid-cols-4">
                   <Info
                     label="Travel Date"
-                    value={formatDate(
-                      booking.departureAt
-                    )}
+                    value={formatDate(booking.departureAt)}
                   />
 
                   <Info
                     label="Departure"
-                    value={formatTime(
-                      booking.departureAt
-                    )}
+                    value={formatTime(booking.departureAt)}
                   />
 
-                  <Info
-                    label="Arrival"
-                    value={formatTime(
-                      booking.arrivalAt
-                    )}
-                  />
+                  <Info label="Arrival" value={formatTime(booking.arrivalAt)} />
 
                   <Info
                     label="Passengers"
-                    value={String(
-                      booking.passengerCount
-                    )}
+                    value={String(booking.passengerCount)}
                   />
                 </div>
               </div>
@@ -494,63 +417,45 @@ export default function BookingDetailsPage() {
               </div>
 
               <div className="mt-5 divide-y divide-[#eeeeF2]">
-                {booking.passengers.length >
-                0 ? (
-                  booking.passengers.map(
-                    (passenger, index) => (
-                      <div
-                        key={
-                          passenger.seatId ||
-                          `${passenger.fullName}-${index}`
-                        }
-                        className="flex items-center justify-between gap-5 py-5 first:pt-0 last:pb-0"
-                      >
-                        <div className="min-w-0">
-                          <p className="font-bold text-[#002451]">
-                            {passenger.fullName ||
-                              `Passenger ${
-                                index + 1
-                              }`}
-                          </p>
+                {booking.passengers.length > 0 ? (
+                  booking.passengers.map((passenger, index) => (
+                    <div
+                      key={passenger.seatId || `${passenger.fullName}-${index}`}
+                      className="flex items-center justify-between gap-5 py-5 first:pt-0 last:pb-0"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-bold text-[#002451]">
+                          {passenger.fullName || `Passenger ${index + 1}`}
+                        </p>
 
-                          {passenger.phoneNumber && (
-                            <p className="mt-1 text-sm text-[#747680]">
-                              {
-                                passenger.phoneNumber
-                              }
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="shrink-0 rounded-xl bg-[#fff1e7] px-5 py-2 text-center">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#9a5a2c]">
-                            Seat
+                        {passenger.phoneNumber && (
+                          <p className="mt-1 text-sm text-[#747680]">
+                            {passenger.phoneNumber}
                           </p>
-
-                          <p className="mt-0.5 font-bold text-[#ff7417]">
-                            {passenger.seatNumber ||
-                              "—"}
-                          </p>
-                        </div>
+                        )}
                       </div>
-                    )
-                  )
+
+                      <div className="shrink-0 rounded-xl bg-[#fff1e7] px-5 py-2 text-center">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[#9a5a2c]">
+                          Seat
+                        </p>
+
+                        <p className="mt-0.5 font-bold text-[#ff7417]">
+                          {passenger.seatNumber || "—"}
+                        </p>
+                      </div>
+                    </div>
+                  ))
                 ) : (
                   <div className="grid grid-cols-2 gap-5">
                     <Info
                       label="Passengers"
-                      value={String(
-                        booking.passengerCount
-                      )}
+                      value={String(booking.passengerCount)}
                     />
 
                     <Info
                       label="Seats"
-                      value={
-                        booking.seatNumbers.join(
-                          ", "
-                        ) || "—"
-                      }
+                      value={booking.seatNumbers.join(", ") || "—"}
                     />
                   </div>
                 )}
@@ -571,21 +476,9 @@ export default function BookingDetailsPage() {
               </h2>
 
               <div className="mt-5 grid gap-5 sm:grid-cols-2">
-                <Info
-                  label="Email"
-                  value={
-                    booking.contactEmail ||
-                    "—"
-                  }
-                />
+                <Info label="Email" value={booking.contactEmail || "—"} />
 
-                <Info
-                  label="Phone"
-                  value={
-                    booking.contactPhone ||
-                    "—"
-                  }
-                />
+                <Info label="Phone" value={booking.contactPhone || "—"} />
               </div>
             </section>
 
@@ -605,33 +498,22 @@ export default function BookingDetailsPage() {
               <div className="mt-5 grid gap-5 sm:grid-cols-2">
                 <Info
                   label="Booking Reference"
-                  value={
-                    booking.bookingReference ||
-                    booking.id
-                  }
+                  value={booking.bookingReference || booking.id}
                 />
 
                 <Info
                   label="Ticket Number"
-                  value={
-                    booking.ticketNumber ||
-                    "—"
-                  }
+                  value={booking.ticketNumber || "—"}
                 />
 
                 <Info
                   label="Payment Reference"
-                  value={
-                    booking.paymentReference ||
-                    "—"
-                  }
+                  value={booking.paymentReference || "—"}
                 />
 
                 <Info
                   label="Booked On"
-                  value={formatDateTime(
-                    booking.createdAt
-                  )}
+                  value={formatDateTime(booking.createdAt)}
                 />
               </div>
             </section>
@@ -680,27 +562,18 @@ export default function BookingDetailsPage() {
                     Payment
                   </span>
 
-                  <PaymentBadge
-                    status={
-                      booking.paymentStatus
-                    }
-                  />
+                  <PaymentBadge status={booking.paymentStatus} />
                 </div>
 
                 {booking.paymentMethod && (
                   <p className="mt-3 text-sm font-semibold capitalize text-[#002451]">
-                    {formatPaymentMethod(
-                      booking.paymentMethod
-                    )}
+                    {formatPaymentMethod(booking.paymentMethod)}
                   </p>
                 )}
 
                 {booking.paidAt && (
                   <p className="mt-1 text-xs text-[#747680]">
-                    Paid{" "}
-                    {formatDateTime(
-                      booking.paidAt
-                    )}
+                    Paid {formatDateTime(booking.paidAt)}
                   </p>
                 )}
               </div>
@@ -716,16 +589,14 @@ export default function BookingDetailsPage() {
               </h2>
 
               <div className="mt-5 space-y-3">
-                {isConfirmed &&
-                  paymentSuccessful &&
-                  hasTicket && (
-                    <Link
-                      href={`/passenger/bookings/${booking.id}/ticket`}
-                      className="flex w-full items-center justify-center rounded-xl bg-[#ff7417] px-5 py-3.5 text-sm font-bold text-white transition hover:bg-[#e96208]"
-                    >
-                      View Digital Ticket
-                    </Link>
-                  )}
+                {isConfirmed && paymentSuccessful && hasTicket && (
+                  <Link
+                    href={`/passenger/bookings/${booking.id}/ticket`}
+                    className="flex w-full items-center justify-center rounded-xl bg-[#ff7417] px-5 py-3.5 text-sm font-bold text-white transition hover:bg-[#e96208]"
+                  >
+                    View Digital Ticket
+                  </Link>
+                )}
 
                 {paymentSuccessful && (
                   <Link
@@ -757,34 +628,29 @@ export default function BookingDetailsPage() {
             </section>
 
             {/* ========================================
-                Tracking
-            ======================================== */}
+    Tracking
+======================================== */}
 
             <section className="rounded-3xl bg-[#002451] p-6 text-white shadow-sm">
               <p className="text-xs font-bold uppercase tracking-[0.15em] text-[#39b5f4]">
                 Journey Tracking
               </p>
 
-              <h2 className="mt-2 text-xl font-bold">
-                Track your bus
-              </h2>
+              <h2 className="mt-2 text-xl font-bold">Track your bus</h2>
 
               <p className="mt-2 text-sm leading-6 text-white/70">
-                Live trip tracking will
-                become available when the
-                operator starts your
-                journey.
+                Check your journey status, boarding information and the latest
+                available bus location.
               </p>
 
-              {/* Tracking backend is not built yet. */}
-
-              <button
-                type="button"
-                disabled
-                className="mt-5 w-full cursor-not-allowed rounded-xl bg-white/10 px-5 py-3.5 text-sm font-bold text-white/50"
+              <Link
+                href={`/passenger/tracking?bookingId=${encodeURIComponent(
+                  booking.id,
+                )}`}
+                className="mt-5 flex w-full items-center justify-center rounded-xl bg-[#39b5f4] px-5 py-3.5 text-sm font-bold text-[#002451] transition hover:bg-white"
               >
-                Live Tracking — Coming Soon
-              </button>
+                Track Trip
+              </Link>
             </section>
           </aside>
         </div>
@@ -797,13 +663,7 @@ export default function BookingDetailsPage() {
    Information Field
 ======================================== */
 
-function Info({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function Info({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-[#92959f]">
@@ -821,40 +681,21 @@ function Info({
    Booking Status Badge
 ======================================== */
 
-function StatusBadge({
-  status,
-}: {
-  status: string;
-}) {
-  const normalized =
-    status.toLowerCase();
+function StatusBadge({ status }: { status: string }) {
+  const normalized = status.toLowerCase();
 
-  let classes =
-    "bg-[#f3f4f6] text-[#6b7280]";
+  let classes = "bg-[#f3f4f6] text-[#6b7280]";
 
   if (normalized === "confirmed") {
-    classes =
-      "bg-[#e9f8ef] text-[#15803d]";
-  } else if (
-    normalized === "cancelled"
-  ) {
-    classes =
-      "bg-[#feecec] text-[#b42318]";
-  } else if (
-    normalized === "completed"
-  ) {
-    classes =
-      "bg-[#eaf4ff] text-[#175cd3]";
-  } else if (
-    normalized === "pending"
-  ) {
-    classes =
-      "bg-[#fff4e5] text-[#b54708]";
-  } else if (
-    normalized === "expired"
-  ) {
-    classes =
-      "bg-[#f3f4f6] text-[#667085]";
+    classes = "bg-[#e9f8ef] text-[#15803d]";
+  } else if (normalized === "cancelled") {
+    classes = "bg-[#feecec] text-[#b42318]";
+  } else if (normalized === "completed") {
+    classes = "bg-[#eaf4ff] text-[#175cd3]";
+  } else if (normalized === "pending") {
+    classes = "bg-[#fff4e5] text-[#b54708]";
+  } else if (normalized === "expired") {
+    classes = "bg-[#f3f4f6] text-[#667085]";
   }
 
   return (
@@ -870,17 +711,10 @@ function StatusBadge({
    Payment Status Badge
 ======================================== */
 
-function PaymentBadge({
-  status,
-}: {
-  status: string;
-}) {
-  const normalized =
-    status.toLowerCase();
+function PaymentBadge({ status }: { status: string }) {
+  const normalized = status.toLowerCase();
 
-  const successful =
-    normalized === "successful" ||
-    normalized === "paid";
+  const successful = normalized === "successful" || normalized === "paid";
 
   return (
     <span
@@ -914,9 +748,7 @@ function MoneyRow({
     <div className="flex items-center justify-between gap-5">
       <span
         className={
-          strong
-            ? "font-bold text-[#002451]"
-            : "text-sm text-[#747680]"
+          strong ? "font-bold text-[#002451]" : "text-sm text-[#747680]"
         }
       >
         {label}
@@ -929,10 +761,7 @@ function MoneyRow({
             : "text-sm font-bold text-[#002451]"
         }
       >
-        {formatMoney(
-          value,
-          currency
-        )}
+        {formatMoney(value, currency)}
       </span>
     </div>
   );
@@ -942,9 +771,7 @@ function MoneyRow({
    Error Helper
 ======================================== */
 
-function getErrorMessage(
-  error: unknown
-): string {
+function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
@@ -956,115 +783,85 @@ function getErrorMessage(
    Date Parser
 ======================================== */
 
-function parseDate(
-  value: string | null
-): Date | null {
+function parseDate(value: string | null): Date | null {
   if (!value) {
     return null;
   }
 
   const date = new Date(value);
 
-  return Number.isNaN(
-    date.getTime()
-  )
-    ? null
-    : date;
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 /* ========================================
    Date Formatter
 ======================================== */
 
-function formatDate(
-  value: string | null
-): string {
+function formatDate(value: string | null): string {
   const date = parseDate(value);
 
   if (!date) {
     return "—";
   }
 
-  return new Intl.DateTimeFormat(
-    "en-GH",
-    {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      timeZone: "Africa/Accra",
-    }
-  ).format(date);
+  return new Intl.DateTimeFormat("en-GH", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Africa/Accra",
+  }).format(date);
 }
 
 /* ========================================
    Time Formatter
 ======================================== */
 
-function formatTime(
-  value: string | null
-): string {
+function formatTime(value: string | null): string {
   const date = parseDate(value);
 
   if (!date) {
     return "—";
   }
 
-  return new Intl.DateTimeFormat(
-    "en-GH",
-    {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-      timeZone: "Africa/Accra",
-    }
-  ).format(date);
+  return new Intl.DateTimeFormat("en-GH", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "Africa/Accra",
+  }).format(date);
 }
 
 /* ========================================
    Date + Time Formatter
 ======================================== */
 
-function formatDateTime(
-  value: string | null
-): string {
+function formatDateTime(value: string | null): string {
   const date = parseDate(value);
 
   if (!date) {
     return "—";
   }
 
-  return new Intl.DateTimeFormat(
-    "en-GH",
-    {
-      dateStyle: "medium",
-      timeStyle: "short",
-      timeZone: "Africa/Accra",
-    }
-  ).format(date);
+  return new Intl.DateTimeFormat("en-GH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Africa/Accra",
+  }).format(date);
 }
 
 /* ========================================
    Money Formatter
 ======================================== */
 
-function formatMoney(
-  amount: number,
-  currency = "GHS"
-): string {
+function formatMoney(amount: number, currency = "GHS"): string {
   try {
-    return new Intl.NumberFormat(
-      "en-GH",
-      {
-        style: "currency",
-        currency:
-          currency || "GHS",
-        minimumFractionDigits: 2,
-      }
-    ).format(amount);
+    return new Intl.NumberFormat("en-GH", {
+      style: "currency",
+      currency: currency || "GHS",
+      minimumFractionDigits: 2,
+    }).format(amount);
   } catch {
-    return `GH₵${amount.toFixed(
-      2
-    )}`;
+    return `GH₵${amount.toFixed(2)}`;
   }
 }
 
@@ -1072,12 +869,8 @@ function formatMoney(
    Payment Method Formatter
 ======================================== */
 
-function formatPaymentMethod(
-  value: string
-): string {
+function formatPaymentMethod(value: string): string {
   return value
     .replace(/[_-]+/g, " ")
-    .replace(/\b\w/g, (letter) =>
-      letter.toUpperCase()
-    );
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

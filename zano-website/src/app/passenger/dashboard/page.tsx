@@ -204,36 +204,28 @@ type PopularOperator = {
    No local bus image files are required.
 ======================================== */
 
+/* ========================================
+   Hero Images
+
+   Local downloaded Zano bus images.
+======================================== */
+
 const HERO_IMAGES = [
   {
-    src:
-      "https://unsplash.com/photos/AA2pOnLZykE/download?force=true&w=2400",
-    alt:
-      "Intercity bus travelling on the road",
+    src: "/images/dashboard/zano bus 1.jpg",
+    alt: "Zano intercity passenger bus",
   },
   {
-    src:
-      "https://unsplash.com/photos/DpUrHlLOSvA/download?force=true&w=2400",
-    alt:
-      "Coach bus travelling on a highway",
+    src: "/images/dashboard/zano bus 2.jpg",
+    alt: "Zano intercity coach",
   },
   {
-    src:
-      "https://unsplash.com/photos/E7iKkQaLVRU/download?force=true&w=2400",
-    alt:
-      "Tour coach travelling on a highway",
+    src: "/images/dashboard/zano bus 3.jpg",
+    alt: "Zano passenger coach",
   },
   {
-    src:
-      "https://unsplash.com/photos/8NJjjkmIaxA/download?force=true&w=2400",
-    alt:
-      "Modern passenger coach",
-  },
-  {
-    src:
-      "https://unsplash.com/photos/66TYNtRBnws/download?force=true&w=2400",
-    alt:
-      "Passenger buses travelling on a highway",
+    src: "/images/dashboard/zano bus 4.jpg",
+    alt: "Zano intercity transport bus",
   },
 ] as const;
 
@@ -247,10 +239,10 @@ const HERO_IMAGES = [
 ======================================== */
 
 const ROUTE_IMAGES = [
+  HERO_IMAGES[0].src,
   HERO_IMAGES[1].src,
   HERO_IMAGES[2].src,
-  HERO_IMAGES[4].src,
-  HERO_IMAGES[0].src,
+  HERO_IMAGES[3].src,
 ] as const;
 
 /* ========================================

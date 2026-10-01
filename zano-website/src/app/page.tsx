@@ -636,7 +636,7 @@ export default function Home() {
       </section>
 
       {/* ========================================
-          Operators
+          Transport Operators
       ======================================== */}
 
       <section className="px-5 py-24 md:px-10 lg:px-16">
@@ -653,21 +653,22 @@ export default function Home() {
                 </h2>
 
                 <p className="mt-5 max-w-xl leading-7 text-white/70">
-                  Zano is designed to connect passengers with
-                  verified operators, real schedules, buses,
-                  boarding points and journey information through
-                  one mobility platform.
+                  Zano connects passengers with transport operators,
+                  schedules, buses, boarding points and journey
+                  information through one mobility platform.
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
                 {[
-                  "VIP Jeoun",
-                  "STC",
-                  "OA Travel",
-                  "VVIP",
-                  "Imperial",
-                  "More soon",
+                  "Intercity STC Coaches",
+                  "VIP Jeoun Transport",
+                  "VVIP Transport",
+                  "OA Travel & Tours",
+                  "Sankofa Lines",
+                  "Metro Mass Transit",
+                  "ABC Transport",
+                  "GUO Transport",
                 ].map((operator) => (
                   <div
                     key={operator}
@@ -681,7 +682,7 @@ export default function Home() {
           </div>
         </div>
       </section>
-
+      
       {/* ========================================
           Journey CTA
       ======================================== */}

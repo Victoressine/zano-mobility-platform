@@ -231,21 +231,40 @@ export default function SearchPage() {
               );
 
             const rows =
-              snapshot.docs.map(
-                (
-                  documentSnapshot
-                ) => ({
-                  id:
-                    documentSnapshot.id,
-                  ...documentSnapshot.data(),
-                })
-              ) as Trip[];
+  snapshot.docs.map(
+    (
+      documentSnapshot
+    ) => ({
+      id:
+        documentSnapshot.id,
+      ...documentSnapshot.data(),
+    })
+  ) as Trip[];
+
+/* ========================================
+   Temporary Search Debug
+======================================== */
+
+console.log(
+  "ZANO SEARCH FIRESTORE RESULTS:",
+  rows.length,
+  rows.map((trip) => ({
+    id: trip.id,
+    companyId: trip.companyId,
+    companyName: trip.companyName,
+    scheduleType: trip.scheduleType,
+    departureTime: trip.departureTime,
+    arrivalTime: trip.arrivalTime,
+    availableSeats: trip.availableSeats,
+    status: trip.status,
+  }))
+);
 
             /* ========================================
                Filter Invalid / Unavailable Trips
             ======================================== */
 
-    const filtered = rows
+ const filtered = rows
   .map((trip) => {
     const originalDeparture =
       getDate(trip.departureAt);
@@ -253,15 +272,12 @@ export default function SearchPage() {
     const originalArrival =
       getDate(trip.arrivalAt);
 
-    if (
-      !originalDeparture ||
-      !originalArrival
-    ) {
-      return null;
-    }
-
     /* ========================================
        Daily Recurring Trip
+       
+       Recurring trips use departureTime and
+       arrivalTime and do not require fixed
+       departureAt / arrivalAt timestamps.
     ======================================== */
 
     if (
@@ -276,19 +292,30 @@ export default function SearchPage() {
 
       const departureTime =
         trip.departureTime ??
-        `${String(
-          originalDeparture.getUTCHours()
-        ).padStart(2, "0")}:${String(
-          originalDeparture.getUTCMinutes()
-        ).padStart(2, "0")}`;
+        (originalDeparture
+          ? `${String(
+              originalDeparture.getUTCHours()
+            ).padStart(2, "0")}:${String(
+              originalDeparture.getUTCMinutes()
+            ).padStart(2, "0")}`
+          : null);
 
       const arrivalTime =
         trip.arrivalTime ??
-        `${String(
-          originalArrival.getUTCHours()
-        ).padStart(2, "0")}:${String(
-          originalArrival.getUTCMinutes()
-        ).padStart(2, "0")}`;
+        (originalArrival
+          ? `${String(
+              originalArrival.getUTCHours()
+            ).padStart(2, "0")}:${String(
+              originalArrival.getUTCMinutes()
+            ).padStart(2, "0")}`
+          : null);
+
+      if (
+        !departureTime ||
+        !arrivalTime
+      ) {
+        return null;
+      }
 
       const departure =
         createTripDateTime(
@@ -378,16 +405,26 @@ export default function SearchPage() {
       } satisfies Trip;
     }
 
-    /* ========================================
-       Fixed-Date Trip
-    ======================================== */
+   /* ========================================
+   Fixed-Date Trip
 
-    if (
-      originalDeparture.getTime() <
-      Date.now()
-    ) {
-      return null;
-    }
+   Fixed trips require actual Firestore
+   departureAt and arrivalAt timestamps.
+======================================== */
+
+if (
+  !originalDeparture ||
+  !originalArrival
+) {
+  return null;
+}
+
+if (
+  originalDeparture.getTime() <
+  Date.now()
+) {
+  return null;
+}
 
     if (
       trip.availableSeats <

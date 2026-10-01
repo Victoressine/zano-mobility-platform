@@ -313,25 +313,7 @@ export default function TripDetailsPage() {
 let cancelled = false;
 let unsubscribeInventory: (() => void) | null = null;
 
-const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        const returnParams = new URLSearchParams({
-          passengers: String(requestedPassengers),
-        });
-
-        if (travelDate) {
-          returnParams.set("travelDate", travelDate);
-        }
-
-        const returnUrl = encodeURIComponent(
-          `/trips/${tripId}?${returnParams.toString()}`,
-        );
-
-        router.replace(`/login?returnUrl=${returnUrl}`);
-
-        return;
-      }
-
+const unsubscribe = onAuthStateChanged(auth, async () => {
       try {
         if (!cancelled) {
           setLoading(true);
@@ -696,9 +678,13 @@ return () => {
       return;
     }
 
-    const seatIds = selectedSeats.map((seat) => seat.id).join(",");
+    const seatIds = selectedSeats
+      .map((seat) => seat.id)
+      .join(",");
 
-    const seatNumbers = selectedSeats.map((seat) => seat.seatNumber).join(",");
+    const seatNumbers = selectedSeats
+      .map((seat) => seat.seatNumber)
+      .join(",");
 
     const checkoutParams = new URLSearchParams({
       tripId: trip.id,
@@ -712,10 +698,36 @@ return () => {
     // ========================================
 
     if (travelDate) {
-      checkoutParams.set("travelDate", travelDate);
+      checkoutParams.set(
+        "travelDate",
+        travelDate
+      );
     }
 
-    router.push(`/checkout?${checkoutParams.toString()}`);
+    const checkoutUrl =
+      `/checkout?${checkoutParams.toString()}`;
+
+    // ========================================
+    // Require Passenger Authentication
+    // Before Checkout / Booking
+    // ========================================
+
+    if (!auth.currentUser) {
+      const returnUrl =
+        encodeURIComponent(checkoutUrl);
+
+      router.push(
+        `/login?returnUrl=${returnUrl}`
+      );
+
+      return;
+    }
+
+    // ========================================
+    // Authenticated Passenger
+    // ========================================
+
+    router.push(checkoutUrl);
   }
 
   // ========================================

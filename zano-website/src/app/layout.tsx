@@ -46,8 +46,19 @@ export const metadata: Metadata = {
     telephone: false,
   },
 
+  /* ========================================
+     Zano Logo / Browser Icon
+  ======================================== */
+
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      {
+        url: "/zano.webp",
+        type: "image/webp",
+      },
+    ],
+    shortcut: "/zano.webp",
+    apple: "/zano.webp",
   },
 };
 
