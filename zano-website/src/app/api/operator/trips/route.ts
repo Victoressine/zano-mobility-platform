@@ -39,8 +39,42 @@ const ALLOWED_SCHEDULE_TYPES = [
 const ALLOWED_TRIP_STATUSES = [
   "draft",
   "scheduled",
+  "boarding",
+  "on_trip",
+  "completed",
   "cancelled",
 ] as const;
+
+type TripStatus =
+  (typeof ALLOWED_TRIP_STATUSES)[number];
+
+const TRIP_STATUS_TRANSITIONS: Record<
+  TripStatus,
+  readonly TripStatus[]
+> = {
+  draft: [
+    "scheduled",
+    "cancelled",
+  ],
+
+  scheduled: [
+    "boarding",
+    "cancelled",
+  ],
+
+  boarding: [
+    "on_trip",
+    "cancelled",
+  ],
+
+  on_trip: [
+    "completed",
+  ],
+
+  completed: [],
+
+  cancelled: [],
+};
 
 const ALLOWED_VEHICLE_STATUSES = [
   "active",
@@ -96,6 +130,11 @@ type TripInput = {
   fare?: number;
 
   bookingEnabled?: boolean;
+  status?: string;
+};
+
+type TripStatusUpdateInput = {
+  tripId?: string;
   status?: string;
 };
 
@@ -396,6 +435,344 @@ export async function GET(
         },
 
         trips,
+      },
+      {
+        headers: {
+          "Cache-Control":
+            "private, no-store, max-age=0",
+        },
+      },
+    );
+  } catch (error) {
+    return handleError(error);
+  }
+}
+
+// ========================================
+// PATCH
+// Update Existing Trip Lifecycle Status
+// ========================================
+
+export async function PATCH(
+  request: NextRequest,
+) {
+  try {
+    const operator =
+      await getOperatorContext(
+        request,
+      );
+
+    let body: TripStatusUpdateInput;
+
+    try {
+      body =
+        (await request.json()) as
+          TripStatusUpdateInput;
+    } catch {
+      throw new ApiError(
+        400,
+        "A valid JSON request body is required.",
+      );
+    }
+
+    const tripId =
+      typeof body.tripId === "string"
+        ? body.tripId.trim()
+        : "";
+
+    const requestedStatus =
+      typeof body.status === "string"
+        ? body.status
+            .trim()
+            .toLowerCase()
+        : "";
+
+    if (!tripId) {
+      throw new ApiError(
+        400,
+        "Trip ID is required.",
+      );
+    }
+
+    if (
+      !ALLOWED_TRIP_STATUSES.includes(
+        requestedStatus as TripStatus,
+      )
+    ) {
+      throw new ApiError(
+        400,
+        "Select a valid trip status.",
+      );
+    }
+
+    const nextStatus =
+      requestedStatus as TripStatus;
+
+    const tripRef =
+      adminDb
+        .collection("trips")
+        .doc(tripId);
+
+    const updatedTrip =
+      await adminDb.runTransaction(
+        async (transaction) => {
+          const tripSnapshot =
+            await transaction.get(
+              tripRef,
+            );
+
+          if (!tripSnapshot.exists) {
+            throw new ApiError(
+              404,
+              "Trip was not found.",
+            );
+          }
+
+          const trip =
+            tripSnapshot.data()!;
+
+          if (
+            trip.companyId !==
+            operator.companyId
+          ) {
+            throw new ApiError(
+              403,
+              "You cannot manage a trip belonging to another company.",
+            );
+          }
+
+          const storedStatus =
+            typeof trip.status ===
+              "string" &&
+            ALLOWED_TRIP_STATUSES.includes(
+              trip.status as TripStatus,
+            )
+              ? (trip.status as TripStatus)
+              : "scheduled";
+
+          if (
+            storedStatus ===
+            nextStatus
+          ) {
+            return {
+              id: tripSnapshot.id,
+              ...trip,
+              status: storedStatus,
+            };
+          }
+
+          const allowedNextStatuses =
+            TRIP_STATUS_TRANSITIONS[
+              storedStatus
+            ];
+
+          if (
+            !allowedNextStatuses.includes(
+              nextStatus,
+            )
+          ) {
+            throw new ApiError(
+              409,
+              `Trip cannot move from ${storedStatus} to ${nextStatus}.`,
+            );
+          }
+
+          const now =
+            FieldValue.serverTimestamp();
+
+          const updateData: Record<
+            string,
+            unknown
+          > = {
+            status: nextStatus,
+            updatedAt: now,
+            statusUpdatedAt: now,
+            statusUpdatedBy:
+              operator.userId,
+          };
+
+          // Publishing a draft makes it
+          // available as a scheduled trip.
+          if (
+            storedStatus === "draft" &&
+            nextStatus === "scheduled"
+          ) {
+            updateData.publishedAt =
+              now;
+          }
+
+          // Record when passenger
+          // boarding officially begins.
+          if (
+            nextStatus === "boarding"
+          ) {
+            updateData.boardingStartedAt =
+              now;
+          }
+
+          // Record the actual trip start.
+          if (
+            nextStatus === "on_trip"
+          ) {
+            updateData.tripStartedAt =
+              now;
+          }
+
+          // Completing a trip closes
+          // passenger booking for it.
+          if (
+            nextStatus === "completed"
+          ) {
+            updateData.completedAt =
+              now;
+
+            updateData.bookingEnabled =
+              false;
+          }
+
+          // Cancellation also closes
+          // passenger booking.
+          if (
+            nextStatus === "cancelled"
+          ) {
+            updateData.cancelledAt =
+              now;
+
+            updateData.bookingEnabled =
+              false;
+          }
+
+          transaction.update(
+            tripRef,
+            updateData,
+          );
+
+          return {
+            id: tripSnapshot.id,
+
+            companyId:
+              operator.companyId,
+
+            companyName:
+              trip.companyName ??
+              operator.companyName,
+
+            vehicleId:
+              trip.vehicleId ?? "",
+
+            routeId:
+              trip.routeId ?? "",
+
+            vehicleName:
+              trip.vehicleName ?? "",
+
+            registrationNumber:
+              trip.registrationNumber ??
+              "",
+
+            busType:
+              trip.busType ?? "",
+
+            seatCapacity:
+              Number(
+                trip.totalSeats ??
+                  trip.seatCapacity ??
+                  0,
+              ),
+
+            seatLayout:
+              trip.seatLayout ?? "",
+
+            amenities:
+              Array.isArray(
+                trip.amenities,
+              )
+                ? trip.amenities
+                : [],
+
+            origin:
+              trip.origin ?? "",
+
+            destination:
+              trip.destination ?? "",
+
+            boardingPoints:
+              Array.isArray(
+                trip.boardingPoints,
+              )
+                ? trip.boardingPoints
+                : [],
+
+            dropOffPoint:
+              trip.dropOffPoint ?? "",
+
+            scheduleType:
+              trip.scheduleType ??
+              "daily",
+
+            operatingDays:
+              Array.isArray(
+                trip.operatingDays,
+              )
+                ? trip.operatingDays
+                : [],
+
+            departureTime:
+              trip.departureTime ?? "",
+
+            arrivalTime:
+              trip.arrivalTime ?? "",
+
+            bookingWindowDays:
+              Number(
+                trip.bookingWindowDays ??
+                  90,
+              ),
+
+            fare:
+              Number(
+                trip.fare ?? 0,
+              ),
+
+            totalSeats:
+              Number(
+                trip.totalSeats ?? 0,
+              ),
+
+            availableSeats:
+              Number(
+                trip.availableSeats ??
+                  trip.totalSeats ??
+                  0,
+              ),
+
+            bookingEnabled:
+              nextStatus ===
+                "completed" ||
+              nextStatus ===
+                "cancelled"
+                ? false
+                : trip.bookingEnabled !==
+                  false,
+
+            status:
+              nextStatus,
+          };
+        },
+      );
+
+    return NextResponse.json(
+      {
+        success: true,
+
+        message:
+          `Trip status updated to ${nextStatus.replace(
+            /_/g,
+            " ",
+          )}.`,
+
+        trip:
+          updatedTrip,
       },
       {
         headers: {
