@@ -1,6 +1,7 @@
 import {
   searchTripsByRoute,
   searchTripsByLocation,
+  searchAllTrips,
   sortTrips,
   type ResolvedTrip,
   type TripSortBy,
@@ -88,9 +89,9 @@ function extractRoute(message: string): {
   destination: string;
 } | null {
   const patterns = [
-    /from\s+(.+?)\s+to\s+(.+?)(?:\s+tomorrow|\s+today|\s+tonight|\s+this\s+morning|\s+this\s+afternoon|\s+this\s+evening|\s+in\s+the\s+morning|\s+in\s+the\s+afternoon|\s+in\s+the\s+evening|\?|$)/i,
+    /from\s+(.+?)\s+to\s+(.+?)(?=\s+(?:tomorrow|today|tonight|this\s+morning|this\s+afternoon|this\s+evening|in\s+the\s+morning|in\s+the\s+afternoon|in\s+the\s+evening|with\s+(?:a\s+)?budget|under\b|below\b|maximum\b|up\s+to\b|cheapest\b|fastest\b)|[?!.,]|$)/i,
 
-    /between\s+(.+?)\s+and\s+(.+?)(?:\s+tomorrow|\s+today|\?|$)/i,
+    /between\s+(.+?)\s+and\s+(.+?)(?=\s+(?:tomorrow|today|tonight|with\s+(?:a\s+)?budget|under\b|below\b|maximum\b|up\s+to\b)|[?!.,]|$)/i,
   ];
 
   for (const pattern of patterns) {
@@ -312,7 +313,19 @@ async function handleTripRequest(
     passengers: 1,
   });
 
-  const sortedTrips = sortTrips(trips, sortBy);
+  let sortedTrips = sortTrips(trips, sortBy);
+
+  // If the user specifies a budget, keep trips at or below it.
+  const budgetMatch = message.match(
+    /(?:budget(?:\s+of)?|under|below|maximum(?:\s+of)?|up\s+to)\s*(?:gh₵|ghs|ghc|₵)?\s*([\d,]+(?:\.\d+)?)/i
+  );
+
+  if (budgetMatch) {
+    const budget = Number(budgetMatch[1].replace(/,/g, ""));
+    if (Number.isFinite(budget)) {
+      sortedTrips = sortedTrips.filter((trip) => trip.fare <= budget);
+    }
+  }
 
   /*
    * Morning / afternoon / evening filtering.
@@ -364,9 +377,9 @@ async function handleTripRequest(
   };
 }
 
-function handleBasicConversation(
+async function handleBasicConversation(
   message: string
-): ZanoAIResponse {
+): Promise<ZanoAIResponse> {
   const lower = normalizeText(message);
 
   if (
@@ -413,10 +426,239 @@ function handleBasicConversation(
     };
   }
 
+  // General searches for buses without a specified route.
+  const asksForAllRoutes =
+    lower.includes("all available routes") ||
+    lower.includes("show me all routes") ||
+    lower.includes("available routes");
+
+  const asksForGeneralAvailability =
+    lower.includes("what buses are available") ||
+    lower.includes("buses available today") ||
+    lower.includes("buses available tomorrow") ||
+    lower.includes("all available buses") ||
+    lower.includes("show me all buses") ||
+    lower.includes("all buses leaving");
+
+  if (asksForAllRoutes || asksForGeneralAvailability) {
+    const date = getDateFromMessage(message);
+
+    // For a general route list, search upcoming trips across
+    // the next 7 days. Explicit today/tomorrow requests keep
+    // their requested date.
+    const today = new Date();
+    const formatDate = (value: Date) =>
+      `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}-${String(value.getUTCDate()).padStart(2, "0")}`;
+
+    const datesToSearch = date
+      ? [date]
+      : asksForAllRoutes
+        ? Array.from({ length: 7 }, (_, index) => {
+            const value = new Date(today);
+            value.setUTCDate(value.getUTCDate() + index);
+            return formatDate(value);
+          })
+        : [formatDate(today)];
+
+    const tripGroups = await Promise.all(
+      datesToSearch.map((travelDate) =>
+        searchAllTrips({ date: travelDate, passengers: 1, limit: 100 })
+      )
+    );
+
+    const uniqueTrips = new Map<string, ResolvedTrip>();
+    tripGroups.flat().forEach((trip) => {
+      uniqueTrips.set(`${trip.id}-${trip.travelDate}`, trip);
+    });
+
+    const sortedTrips = sortTrips(
+      Array.from(uniqueTrips.values()),
+      detectSort(message)
+    );
+
+    if (sortedTrips.length === 0) {
+      return {
+        success: true,
+        message: date
+          ? `I couldn't find any available trips for ${date}. Try another date or specify a route, such as Accra to Kumasi.`
+          : "I couldn't find any available trips in the current schedule. Please try again later or search for a specific route.",
+        trips: [],
+      };
+    }
+
+    const routes = Array.from(
+      new Set(sortedTrips.map((trip) => `${trip.origin} → ${trip.destination}`))
+    );
+
+    const messageText = asksForAllRoutes
+      ? `Here are the routes with available trips${date ? ` for ${date}` : ""}:\n\n` +
+        routes.map((route) => `• ${route}`).join("\n")
+      : `I found ${sortedTrips.length} available trip${sortedTrips.length === 1 ? "" : "s"}${date ? ` for ${date}` : ""}:\n\n` +
+        sortedTrips.slice(0, 10).map((trip, index) => formatTrip(trip, index)).join("\n\n") +
+        (sortedTrips.length > 10 ? "\n\nShowing the first 10 trips. Tell me your route to narrow the results." : "");
+
+    return {
+      success: true,
+      message: messageText,
+      trips: sortedTrips,
+    };
+  }
+
+  // Ask for the details needed to start the booking process.
+  if (
+    lower.includes("book a trip") ||
+    lower.includes("book me") ||
+    lower.includes("help me book") ||
+    lower.includes("make a booking") ||
+    lower.includes("reserve a bus") ||
+    lower.includes("start booking assistance") ||
+    lower.includes("booking assistance") ||
+    lower.includes("start booking") ||
+    lower === "booking"
+  ) {
+    return {
+      success: true,
+      message:
+        "Absolutely! 🚌 Let's find a trip for you. Please tell me:\n\n" +
+        "1. Your departure city\n" +
+        "2. Your destination\n" +
+        "3. Your travel date\n" +
+        "4. Number of passengers\n\n" +
+        "I'll help you find an available trip. Your booking is only confirmed after you complete the booking process on Zano.",
+    };
+  }
+
+  if (
+    lower.includes("track my trip") ||
+    lower.includes("track my bus") ||
+    lower.includes("track my journey") ||
+    lower.includes("live location")
+  ) {
+    return {
+      success: true,
+      message:
+        "📍 You can check trip progress through your Zano booking or trip-tracking page when tracking is available for your journey. I can't see a live bus location from this chat alone. If you share your booking status or trip details (without payment or private account information), I can help you understand the next step.",
+    };
+  }
+
+  if (
+    lower.includes("where can i board") ||
+    lower.includes("boarding point") ||
+    lower.includes("boarding points") ||
+    lower.includes("where do i board")
+  ) {
+    const location =
+      extractLocationAfterKeyword(message, ["board", "boarding"]) ||
+      (lower.includes("accra") ? "Accra" : null);
+
+    if (location) {
+      const today = new Date();
+      const dates = Array.from({ length: 7 }, (_, index) => {
+        const date = new Date(today);
+        date.setUTCDate(date.getUTCDate() + index);
+        return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+      });
+
+      const tripGroups = await Promise.all(
+        dates.map((date) => searchTripsByLocation({ location, date }))
+      );
+
+      const uniqueTrips = new Map<string, ResolvedTrip>();
+      tripGroups.flat().forEach((trip) => {
+        uniqueTrips.set(`${trip.id}-${trip.travelDate}`, trip);
+      });
+      const trips = Array.from(uniqueTrips.values());
+
+      const points = Array.from(
+        new Set(trips.flatMap((trip) => trip.boardingPoints))
+      );
+
+      return {
+        success: true,
+        message: points.length
+          ? `📍 Boarding points found for trips matching ${location}:\n- ${points.join("\n- ")}`
+          : `I couldn't find saved boarding points for ${location} yet. Please check the boarding details on your selected trip.`,
+        trips,
+      };
+    }
+
+    return {
+      success: true,
+      message:
+        "Tell me the city or the bus trip you're asking about, and I'll check the boarding points saved for matching trips.",
+    };
+  }
+
+  if (
+    lower.includes("fastest") ||
+    lower.includes("quickest") ||
+    lower.includes("shortest")
+  ) {
+    return {
+      success: true,
+      message:
+        "I can compare journey durations once I know your route. For example: “Which is the fastest bus from Accra to Kumasi?”",
+    };
+  }
+
+  // Find the cheapest upcoming trip, even without a specified route.
+  if (
+    lower.includes("cheapest") ||
+    lower.includes("lowest fare") ||
+    lower.includes("lowest price") ||
+    lower.includes("cheapest trip") ||
+    lower.includes("cheapest bus")
+  ) {
+    const requestedDate = getDateFromMessage(message);
+    const today = new Date();
+
+    const dates = requestedDate
+      ? [requestedDate]
+      : Array.from({ length: 7 }, (_, index) => {
+          const date = new Date(today);
+          date.setUTCDate(date.getUTCDate() + index);
+          return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+        });
+
+    const groups = await Promise.all(
+      dates.map((date) =>
+        searchAllTrips({ date, passengers: 1, limit: 100 })
+      )
+    );
+
+    const uniqueTrips = new Map<string, ResolvedTrip>();
+    groups.flat().forEach((trip) => {
+      uniqueTrips.set(`${trip.id}-${trip.travelDate}`, trip);
+    });
+
+    const trips = sortTrips(
+      Array.from(uniqueTrips.values()),
+      "cheapest"
+    );
+
+    if (trips.length === 0) {
+      return {
+        success: true,
+        message: "I couldn't find an available trip in the schedule for the next 7 days. Try another travel date or ask about a specific route.",
+        trips: [],
+      };
+    }
+
+    return {
+      success: true,
+      message:
+        "💰 The cheapest available trip I found" +
+        (requestedDate ? ` for ${requestedDate}` : " in the next 7 days") +
+        " is:\n\n" +
+        formatTrip(trips[0], 0),
+      trips: [trips[0]],
+    };
+  }
+
   return {
     success: true,
     message:
-      "I'm Zano AI 🤖. Tell me where you're travelling from, where you're going, and when you'd like to travel. I can also check the weather for your trip.",
+      "I'm Zano AI 🤖. I can help with bus searches, fare budgets, boarding points, and travel planning. Tell me your route or ask me a specific question about your trip.",
   };
 }
 

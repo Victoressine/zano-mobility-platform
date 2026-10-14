@@ -146,8 +146,28 @@ function resolveTripInstance(
   requestedDate: string | undefined,
   minSeats: number
 ): ResolvedTrip | null {
-  const rawDeparture = trip.departureAt?.toDate();
-  const rawArrival = trip.arrivalAt?.toDate();
+  const toDate = (value: unknown): Date | undefined => {
+    if (value instanceof Date) return value;
+
+    if (
+      value &&
+      typeof value === "object" &&
+      "toDate" in value &&
+      typeof value.toDate === "function"
+    ) {
+      return value.toDate();
+    }
+
+    if (typeof value === "string" || typeof value === "number") {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? undefined : date;
+    }
+
+    return undefined;
+  };
+
+  const rawDeparture = toDate(trip.departureAt);
+  const rawArrival = toDate(trip.arrivalAt);
 
   if (!rawDeparture || !rawArrival) {
     return null;
@@ -389,6 +409,48 @@ export async function searchTripsByLocation(params: {
   });
 
   return resolved;
+}
+
+// ========================================
+// Search: all available trips for a date
+// ========================================
+
+export async function searchAllTrips(params: {
+  date?: string;
+  passengers?: number;
+  limit?: number;
+} = {}): Promise<ResolvedTrip[]> {
+  const minSeats = Math.max(1, params.passengers ?? 1);
+  const limit = Math.min(300, Math.max(1, params.limit ?? 100));
+
+  const snapshot = await adminDb
+    .collection("trips")
+    .where("status", "==", "scheduled")
+    .limit(300)
+    .get();
+
+  const resolved: ResolvedTrip[] = [];
+
+  snapshot.docs.forEach((docSnapshot) => {
+    const trip = resolveTripInstance(
+      docSnapshot.id,
+      docSnapshot.data() as RawTrip,
+      params.date,
+      minSeats
+    );
+
+    if (trip) {
+      resolved.push(trip);
+    }
+  });
+
+  return resolved
+    .sort(
+      (a, b) =>
+        new Date(a.departureAt).getTime() -
+        new Date(b.departureAt).getTime()
+    )
+    .slice(0, limit);
 }
 
 // ========================================
