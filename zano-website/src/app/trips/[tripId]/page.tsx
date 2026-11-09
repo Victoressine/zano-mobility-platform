@@ -443,13 +443,22 @@ const unsubscribe = onAuthStateChanged(auth, async () => {
             }) as Seat,
         );
 
-        seatData.sort((a, b) => {
-          if (a.row !== b.row) {
-            return a.row - b.row;
-          }
+        seatData.forEach((seat) => {
+  const match = String(seat.seatNumber ?? "").match(/^(\d+)([A-Z])$/);
 
-          return a.column.localeCompare(b.column);
-        });
+  if (match) {
+    seat.row = Number(match[1]);
+    seat.column = match[2];
+  }
+});
+
+seatData.sort((a, b) => {
+  if (a.row !== b.row) {
+    return a.row - b.row;
+  }
+
+  return (a.column ?? "").localeCompare(b.column ?? "");
+});
 
         if (seatData.length === 0) {
           setError("No seats have been configured for this trip.");

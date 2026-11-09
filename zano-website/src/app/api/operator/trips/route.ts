@@ -1,18 +1,10 @@
 import "server-only";
 
-import {
-  NextRequest,
-  NextResponse,
-} from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-import {
-  FieldValue,
-} from "firebase-admin/firestore";
+import { FieldValue } from "firebase-admin/firestore";
 
-import {
-  adminAuth,
-  adminDb,
-} from "@/lib/firebase/admin";
+import { adminAuth, adminDb } from "@/lib/firebase/admin";
 
 // ========================================
 // Constants
@@ -25,16 +17,9 @@ const ALLOWED_BUS_TYPES = [
   "Mini Bus",
 ] as const;
 
-const ALLOWED_LAYOUTS = [
-  "2+1",
-  "2+2",
-] as const;
+const ALLOWED_LAYOUTS = ["2+1", "2+2"] as const;
 
-const ALLOWED_SCHEDULE_TYPES = [
-  "daily",
-  "weekly",
-  "selected-days",
-] as const;
+const ALLOWED_SCHEDULE_TYPES = ["daily", "weekly", "selected-days"] as const;
 
 const ALLOWED_TRIP_STATUSES = [
   "draft",
@@ -45,42 +30,23 @@ const ALLOWED_TRIP_STATUSES = [
   "cancelled",
 ] as const;
 
-type TripStatus =
-  (typeof ALLOWED_TRIP_STATUSES)[number];
+type TripStatus = (typeof ALLOWED_TRIP_STATUSES)[number];
 
-const TRIP_STATUS_TRANSITIONS: Record<
-  TripStatus,
-  readonly TripStatus[]
-> = {
-  draft: [
-    "scheduled",
-    "cancelled",
-  ],
+const TRIP_STATUS_TRANSITIONS: Record<TripStatus, readonly TripStatus[]> = {
+  draft: ["scheduled", "cancelled"],
 
-  scheduled: [
-    "boarding",
-    "cancelled",
-  ],
+  scheduled: ["boarding", "cancelled"],
 
-  boarding: [
-    "on_trip",
-    "cancelled",
-  ],
+  boarding: ["on_trip", "cancelled"],
 
-  on_trip: [
-    "completed",
-  ],
+  on_trip: ["completed"],
 
   completed: [],
 
   cancelled: [],
 };
 
-const ALLOWED_VEHICLE_STATUSES = [
-  "active",
-  "maintenance",
-  "inactive",
-] as const;
+const ALLOWED_VEHICLE_STATUSES = ["active", "maintenance", "inactive"] as const;
 
 const DAY_NAMES = [
   "monday",
@@ -145,124 +111,64 @@ type TripStatusUpdateInput = {
 async function getOperatorContext(
   request: NextRequest,
 ): Promise<OperatorContext> {
-  const authorization =
-    request.headers.get(
-      "authorization",
-    );
+  const authorization = request.headers.get("authorization");
 
-  if (
-    !authorization ||
-    !authorization.startsWith(
-      "Bearer ",
-    )
-  ) {
-    throw new ApiError(
-      401,
-      "Authentication is required.",
-    );
+  if (!authorization || !authorization.startsWith("Bearer ")) {
+    throw new ApiError(401, "Authentication is required.");
   }
 
-  const token =
-    authorization
-      .slice(7)
-      .trim();
+  const token = authorization.slice(7).trim();
 
   if (!token) {
-    throw new ApiError(
-      401,
-      "Authentication token is missing.",
-    );
+    throw new ApiError(401, "Authentication token is missing.");
   }
 
   let decodedToken;
 
   try {
-    decodedToken =
-      await adminAuth.verifyIdToken(
-        token,
-      );
+    decodedToken = await adminAuth.verifyIdToken(token);
   } catch {
-    throw new ApiError(
-      401,
-      "Your session is invalid or has expired.",
-    );
+    throw new ApiError(401, "Your session is invalid or has expired.");
   }
 
-  const userId =
-    decodedToken.uid;
+  const userId = decodedToken.uid;
 
-  const [
-    userSnapshot,
-    membershipSnapshot,
-  ] =
-    await Promise.all([
-      adminDb
-        .collection("users")
-        .doc(userId)
-        .get(),
+  const [userSnapshot, membershipSnapshot] = await Promise.all([
+    adminDb.collection("users").doc(userId).get(),
 
-      adminDb
-        .collection(
-          "operatorMembers",
-        )
-        .doc(userId)
-        .get(),
-    ]);
+    adminDb.collection("operatorMembers").doc(userId).get(),
+  ]);
 
-  if (
-    !userSnapshot.exists ||
-    userSnapshot.data()?.role !==
-      "operator"
-  ) {
-    throw new ApiError(
-      403,
-      "Operator access is required.",
-    );
+  if (!userSnapshot.exists || userSnapshot.data()?.role !== "operator") {
+    throw new ApiError(403, "Operator access is required.");
   }
 
-  if (
-    !membershipSnapshot.exists
-  ) {
-    throw new ApiError(
-      403,
-      "Operator membership was not found.",
-    );
+  if (!membershipSnapshot.exists) {
+    throw new ApiError(403, "Operator membership was not found.");
   }
 
-  const membership =
-    membershipSnapshot.data();
+  const membership = membershipSnapshot.data();
 
   const companyId =
-    typeof membership?.companyId ===
-    "string"
+    typeof membership?.companyId === "string"
       ? membership.companyId.trim()
       : "";
 
   if (
     membership?.userId !== userId ||
-    membership?.status !==
-      "active" ||
+    membership?.status !== "active" ||
     !companyId
   ) {
-    throw new ApiError(
-      403,
-      "Your operator membership is not active.",
-    );
+    throw new ApiError(403, "Your operator membership is not active.");
   }
 
-  const companySnapshot =
-    await adminDb
-      .collection("companies")
-      .doc(companyId)
-      .get();
+  const companySnapshot = await adminDb
+    .collection("companies")
+    .doc(companyId)
+    .get();
 
-  if (
-    !companySnapshot.exists
-  ) {
-    throw new ApiError(
-      404,
-      "Assigned transport company was not found.",
-    );
+  if (!companySnapshot.exists) {
+    throw new ApiError(404, "Assigned transport company was not found.");
   }
 
   return {
@@ -270,10 +176,8 @@ async function getOperatorContext(
     companyId,
 
     companyName:
-      typeof companySnapshot.data()
-        ?.name === "string"
-        ? companySnapshot.data()!
-            .name
+      typeof companySnapshot.data()?.name === "string"
+        ? companySnapshot.data()!.name
         : "Transport Company",
   };
 }
@@ -283,163 +187,95 @@ async function getOperatorContext(
 // Load Company's Onboarded Trips
 // ========================================
 
-export async function GET(
-  request: NextRequest,
-) {
+export async function GET(request: NextRequest) {
   try {
-    const operator =
-      await getOperatorContext(
-        request,
+    const operator = await getOperatorContext(request);
+
+    const tripsSnapshot = await adminDb
+      .collection("trips")
+      .where("companyId", "==", operator.companyId)
+      .get();
+
+    const trips = tripsSnapshot.docs
+      .map((document) => {
+        const data = document.data();
+
+        return {
+          id: document.id,
+
+          companyId: operator.companyId,
+
+          companyName: data.companyName ?? operator.companyName,
+
+          vehicleId: data.vehicleId ?? "",
+
+          routeId: data.routeId ?? "",
+
+          vehicleName: data.vehicleName ?? "",
+
+          registrationNumber: data.registrationNumber ?? "",
+
+          busType: data.busType ?? "",
+
+          seatCapacity: Number(data.totalSeats ?? data.seatCapacity ?? 0),
+
+          seatLayout: data.seatLayout ?? "",
+
+          amenities: Array.isArray(data.amenities) ? data.amenities : [],
+
+          origin: data.origin ?? "",
+
+          destination: data.destination ?? "",
+
+          boardingPoints: Array.isArray(data.boardingPoints)
+            ? data.boardingPoints
+            : [],
+
+          dropOffPoint: data.dropOffPoint ?? "",
+
+          scheduleType: data.scheduleType ?? "daily",
+
+          operatingDays: Array.isArray(data.operatingDays)
+            ? data.operatingDays
+            : [],
+
+          departureTime: data.departureTime ?? "",
+
+          arrivalTime: data.arrivalTime ?? "",
+
+          bookingWindowDays: Number(data.bookingWindowDays ?? 90),
+
+          fare: Number(data.fare ?? 0),
+
+          totalSeats: Number(data.totalSeats ?? 0),
+
+          availableSeats: Number(data.availableSeats ?? data.totalSeats ?? 0),
+
+          bookingEnabled: data.bookingEnabled !== false,
+
+          status: data.status ?? "scheduled",
+        };
+      })
+      .sort((a, b) =>
+        `${a.origin}${a.destination}${a.departureTime}`.localeCompare(
+          `${b.origin}${b.destination}${b.departureTime}`,
+        ),
       );
-
-    const tripsSnapshot =
-      await adminDb
-        .collection("trips")
-        .where(
-          "companyId",
-          "==",
-          operator.companyId,
-        )
-        .get();
-
-    const trips =
-      tripsSnapshot.docs
-        .map((document) => {
-          const data =
-            document.data();
-
-          return {
-            id: document.id,
-
-            companyId:
-              operator.companyId,
-
-            companyName:
-              data.companyName ??
-              operator.companyName,
-
-            vehicleId:
-              data.vehicleId ?? "",
-
-            routeId:
-              data.routeId ?? "",
-
-            vehicleName:
-              data.vehicleName ?? "",
-
-            registrationNumber:
-              data.registrationNumber ??
-              "",
-
-            busType:
-              data.busType ?? "",
-
-            seatCapacity:
-              Number(
-                data.totalSeats ??
-                  data.seatCapacity ??
-                  0,
-              ),
-
-            seatLayout:
-              data.seatLayout ?? "",
-
-            amenities:
-              Array.isArray(
-                data.amenities,
-              )
-                ? data.amenities
-                : [],
-
-            origin:
-              data.origin ?? "",
-
-            destination:
-              data.destination ??
-              "",
-
-            boardingPoints:
-              Array.isArray(
-                data.boardingPoints,
-              )
-                ? data.boardingPoints
-                : [],
-
-            dropOffPoint:
-              data.dropOffPoint ?? "",
-
-            scheduleType:
-              data.scheduleType ??
-              "daily",
-
-            operatingDays:
-              Array.isArray(
-                data.operatingDays,
-              )
-                ? data.operatingDays
-                : [],
-
-            departureTime:
-              data.departureTime ?? "",
-
-            arrivalTime:
-              data.arrivalTime ?? "",
-
-            bookingWindowDays:
-              Number(
-                data.bookingWindowDays ??
-                  90,
-              ),
-
-            fare:
-              Number(
-                data.fare ?? 0,
-              ),
-
-            totalSeats:
-              Number(
-                data.totalSeats ?? 0,
-              ),
-
-            availableSeats:
-              Number(
-                data.availableSeats ??
-                  data.totalSeats ??
-                  0,
-              ),
-
-            bookingEnabled:
-              data.bookingEnabled !==
-              false,
-
-            status:
-              data.status ??
-              "scheduled",
-          };
-        })
-        .sort((a, b) =>
-          `${a.origin}${a.destination}${a.departureTime}`.localeCompare(
-            `${b.origin}${b.destination}${b.departureTime}`,
-          ),
-        );
 
     return NextResponse.json(
       {
         success: true,
 
         company: {
-          id:
-            operator.companyId,
-          name:
-            operator.companyName,
+          id: operator.companyId,
+          name: operator.companyName,
         },
 
         trips,
       },
       {
         headers: {
-          "Cache-Control":
-            "private, no-store, max-age=0",
+          "Cache-Control": "private, no-store, max-age=0",
         },
       },
     );
@@ -453,331 +289,189 @@ export async function GET(
 // Update Existing Trip Lifecycle Status
 // ========================================
 
-export async function PATCH(
-  request: NextRequest,
-) {
+export async function PATCH(request: NextRequest) {
   try {
-    const operator =
-      await getOperatorContext(
-        request,
-      );
+    const operator = await getOperatorContext(request);
 
     let body: TripStatusUpdateInput;
 
     try {
-      body =
-        (await request.json()) as
-          TripStatusUpdateInput;
+      body = (await request.json()) as TripStatusUpdateInput;
     } catch {
-      throw new ApiError(
-        400,
-        "A valid JSON request body is required.",
-      );
+      throw new ApiError(400, "A valid JSON request body is required.");
     }
 
-    const tripId =
-      typeof body.tripId === "string"
-        ? body.tripId.trim()
-        : "";
+    const tripId = typeof body.tripId === "string" ? body.tripId.trim() : "";
 
     const requestedStatus =
-      typeof body.status === "string"
-        ? body.status
-            .trim()
-            .toLowerCase()
-        : "";
+      typeof body.status === "string" ? body.status.trim().toLowerCase() : "";
 
     if (!tripId) {
-      throw new ApiError(
-        400,
-        "Trip ID is required.",
-      );
+      throw new ApiError(400, "Trip ID is required.");
     }
 
-    if (
-      !ALLOWED_TRIP_STATUSES.includes(
-        requestedStatus as TripStatus,
-      )
-    ) {
-      throw new ApiError(
-        400,
-        "Select a valid trip status.",
-      );
+    if (!ALLOWED_TRIP_STATUSES.includes(requestedStatus as TripStatus)) {
+      throw new ApiError(400, "Select a valid trip status.");
     }
 
-    const nextStatus =
-      requestedStatus as TripStatus;
+    const nextStatus = requestedStatus as TripStatus;
 
-    const tripRef =
-      adminDb
-        .collection("trips")
-        .doc(tripId);
+    const tripRef = adminDb.collection("trips").doc(tripId);
 
-    const updatedTrip =
-      await adminDb.runTransaction(
-        async (transaction) => {
-          const tripSnapshot =
-            await transaction.get(
-              tripRef,
-            );
+    const updatedTrip = await adminDb.runTransaction(async (transaction) => {
+      const tripSnapshot = await transaction.get(tripRef);
 
-          if (!tripSnapshot.exists) {
-            throw new ApiError(
-              404,
-              "Trip was not found.",
-            );
-          }
+      if (!tripSnapshot.exists) {
+        throw new ApiError(404, "Trip was not found.");
+      }
 
-          const trip =
-            tripSnapshot.data()!;
+      const trip = tripSnapshot.data()!;
 
-          if (
-            trip.companyId !==
-            operator.companyId
-          ) {
-            throw new ApiError(
-              403,
-              "You cannot manage a trip belonging to another company.",
-            );
-          }
+      if (trip.companyId !== operator.companyId) {
+        throw new ApiError(
+          403,
+          "You cannot manage a trip belonging to another company.",
+        );
+      }
 
-          const storedStatus =
-            typeof trip.status ===
-              "string" &&
-            ALLOWED_TRIP_STATUSES.includes(
-              trip.status as TripStatus,
-            )
-              ? (trip.status as TripStatus)
-              : "scheduled";
+      const storedStatus =
+        typeof trip.status === "string" &&
+        ALLOWED_TRIP_STATUSES.includes(trip.status as TripStatus)
+          ? (trip.status as TripStatus)
+          : "scheduled";
 
-          if (
-            storedStatus ===
-            nextStatus
-          ) {
-            return {
-              id: tripSnapshot.id,
-              ...trip,
-              status: storedStatus,
-            };
-          }
+      if (storedStatus === nextStatus) {
+        return {
+          id: tripSnapshot.id,
+          ...trip,
+          status: storedStatus,
+        };
+      }
 
-          const allowedNextStatuses =
-            TRIP_STATUS_TRANSITIONS[
-              storedStatus
-            ];
+      const allowedNextStatuses = TRIP_STATUS_TRANSITIONS[storedStatus];
 
-          if (
-            !allowedNextStatuses.includes(
-              nextStatus,
-            )
-          ) {
-            throw new ApiError(
-              409,
-              `Trip cannot move from ${storedStatus} to ${nextStatus}.`,
-            );
-          }
+      if (!allowedNextStatuses.includes(nextStatus)) {
+        throw new ApiError(
+          409,
+          `Trip cannot move from ${storedStatus} to ${nextStatus}.`,
+        );
+      }
 
-          const now =
-            FieldValue.serverTimestamp();
+      const now = FieldValue.serverTimestamp();
 
-          const updateData: Record<
-            string,
-            unknown
-          > = {
-            status: nextStatus,
-            updatedAt: now,
-            statusUpdatedAt: now,
-            statusUpdatedBy:
-              operator.userId,
-          };
+      const updateData: Record<string, unknown> = {
+        status: nextStatus,
+        updatedAt: now,
+        statusUpdatedAt: now,
+        statusUpdatedBy: operator.userId,
+      };
 
-          // Publishing a draft makes it
-          // available as a scheduled trip.
-          if (
-            storedStatus === "draft" &&
-            nextStatus === "scheduled"
-          ) {
-            updateData.publishedAt =
-              now;
-          }
+      // Publishing a draft makes it
+      // available as a scheduled trip.
+      if (storedStatus === "draft" && nextStatus === "scheduled") {
+        updateData.publishedAt = now;
+      }
 
-          // Record when passenger
-          // boarding officially begins.
-          if (
-            nextStatus === "boarding"
-          ) {
-            updateData.boardingStartedAt =
-              now;
-          }
+      // Record when passenger
+      // boarding officially begins.
+      if (nextStatus === "boarding") {
+        updateData.boardingStartedAt = now;
+      }
 
-          // Record the actual trip start.
-          if (
-            nextStatus === "on_trip"
-          ) {
-            updateData.tripStartedAt =
-              now;
-          }
+      // Record the actual trip start.
+      if (nextStatus === "on_trip") {
+        updateData.tripStartedAt = now;
+      }
 
-          // Completing a trip closes
-          // passenger booking for it.
-          if (
-            nextStatus === "completed"
-          ) {
-            updateData.completedAt =
-              now;
+      // Completing a trip closes
+      // passenger booking for it.
+      if (nextStatus === "completed") {
+        updateData.completedAt = now;
 
-            updateData.bookingEnabled =
-              false;
-          }
+        updateData.bookingEnabled = false;
+      }
 
-          // Cancellation also closes
-          // passenger booking.
-          if (
-            nextStatus === "cancelled"
-          ) {
-            updateData.cancelledAt =
-              now;
+      // Cancellation also closes
+      // passenger booking.
+      if (nextStatus === "cancelled") {
+        updateData.cancelledAt = now;
 
-            updateData.bookingEnabled =
-              false;
-          }
+        updateData.bookingEnabled = false;
+      }
 
-          transaction.update(
-            tripRef,
-            updateData,
-          );
+      transaction.update(tripRef, updateData);
 
-          return {
-            id: tripSnapshot.id,
+      return {
+        id: tripSnapshot.id,
 
-            companyId:
-              operator.companyId,
+        companyId: operator.companyId,
 
-            companyName:
-              trip.companyName ??
-              operator.companyName,
+        companyName: trip.companyName ?? operator.companyName,
 
-            vehicleId:
-              trip.vehicleId ?? "",
+        vehicleId: trip.vehicleId ?? "",
 
-            routeId:
-              trip.routeId ?? "",
+        routeId: trip.routeId ?? "",
 
-            vehicleName:
-              trip.vehicleName ?? "",
+        vehicleName: trip.vehicleName ?? "",
 
-            registrationNumber:
-              trip.registrationNumber ??
-              "",
+        registrationNumber: trip.registrationNumber ?? "",
 
-            busType:
-              trip.busType ?? "",
+        busType: trip.busType ?? "",
 
-            seatCapacity:
-              Number(
-                trip.totalSeats ??
-                  trip.seatCapacity ??
-                  0,
-              ),
+        seatCapacity: Number(trip.totalSeats ?? trip.seatCapacity ?? 0),
 
-            seatLayout:
-              trip.seatLayout ?? "",
+        seatLayout: trip.seatLayout ?? "",
 
-            amenities:
-              Array.isArray(
-                trip.amenities,
-              )
-                ? trip.amenities
-                : [],
+        amenities: Array.isArray(trip.amenities) ? trip.amenities : [],
 
-            origin:
-              trip.origin ?? "",
+        origin: trip.origin ?? "",
 
-            destination:
-              trip.destination ?? "",
+        destination: trip.destination ?? "",
 
-            boardingPoints:
-              Array.isArray(
-                trip.boardingPoints,
-              )
-                ? trip.boardingPoints
-                : [],
+        boardingPoints: Array.isArray(trip.boardingPoints)
+          ? trip.boardingPoints
+          : [],
 
-            dropOffPoint:
-              trip.dropOffPoint ?? "",
+        dropOffPoint: trip.dropOffPoint ?? "",
 
-            scheduleType:
-              trip.scheduleType ??
-              "daily",
+        scheduleType: trip.scheduleType ?? "daily",
 
-            operatingDays:
-              Array.isArray(
-                trip.operatingDays,
-              )
-                ? trip.operatingDays
-                : [],
+        operatingDays: Array.isArray(trip.operatingDays)
+          ? trip.operatingDays
+          : [],
 
-            departureTime:
-              trip.departureTime ?? "",
+        departureTime: trip.departureTime ?? "",
 
-            arrivalTime:
-              trip.arrivalTime ?? "",
+        arrivalTime: trip.arrivalTime ?? "",
 
-            bookingWindowDays:
-              Number(
-                trip.bookingWindowDays ??
-                  90,
-              ),
+        bookingWindowDays: Number(trip.bookingWindowDays ?? 90),
 
-            fare:
-              Number(
-                trip.fare ?? 0,
-              ),
+        fare: Number(trip.fare ?? 0),
 
-            totalSeats:
-              Number(
-                trip.totalSeats ?? 0,
-              ),
+        totalSeats: Number(trip.totalSeats ?? 0),
 
-            availableSeats:
-              Number(
-                trip.availableSeats ??
-                  trip.totalSeats ??
-                  0,
-              ),
+        availableSeats: Number(trip.availableSeats ?? trip.totalSeats ?? 0),
 
-            bookingEnabled:
-              nextStatus ===
-                "completed" ||
-              nextStatus ===
-                "cancelled"
-                ? false
-                : trip.bookingEnabled !==
-                  false,
+        bookingEnabled:
+          nextStatus === "completed" || nextStatus === "cancelled"
+            ? false
+            : trip.bookingEnabled !== false,
 
-            status:
-              nextStatus,
-          };
-        },
-      );
+        status: nextStatus,
+      };
+    });
 
     return NextResponse.json(
       {
         success: true,
 
-        message:
-          `Trip status updated to ${nextStatus.replace(
-            /_/g,
-            " ",
-          )}.`,
+        message: `Trip status updated to ${nextStatus.replace(/_/g, " ")}.`,
 
-        trip:
-          updatedTrip,
+        trip: updatedTrip,
       },
       {
         headers: {
-          "Cache-Control":
-            "private, no-store, max-age=0",
+          "Cache-Control": "private, no-store, max-age=0",
         },
       },
     );
@@ -791,54 +485,32 @@ export async function PATCH(
 // Onboard Bus + Route + Trip + Seats
 // ========================================
 
-export async function POST(
-  request: NextRequest,
-) {
+export async function POST(request: NextRequest) {
   try {
-    const operator =
-      await getOperatorContext(
-        request,
-      );
+    const operator = await getOperatorContext(request);
 
     let body: TripInput;
 
     try {
-      body =
-        (await request.json()) as
-          TripInput;
+      body = (await request.json()) as TripInput;
     } catch {
-      throw new ApiError(
-        400,
-        "Invalid request body.",
-      );
+      throw new ApiError(400, "Invalid request body.");
     }
 
-    const input =
-      validateTripInput(body);
+    const input = validateTripInput(body);
 
     // ========================================
     // Check Registration Number
     // ========================================
 
-    const existingVehicles =
-      await adminDb
-        .collection("vehicles")
-        .where(
-          "companyId",
-          "==",
-          operator.companyId,
-        )
-        .where(
-          "registrationNumber",
-          "==",
-          input.registrationNumber,
-        )
-        .limit(1)
-        .get();
+    const existingVehicles = await adminDb
+      .collection("vehicles")
+      .where("companyId", "==", operator.companyId)
+      .where("registrationNumber", "==", input.registrationNumber)
+      .limit(1)
+      .get();
 
-    if (
-      !existingVehicles.empty
-    ) {
+    if (!existingVehicles.empty) {
       throw new ApiError(
         409,
         "A bus with this registration number is already onboarded for your company.",
@@ -849,236 +521,162 @@ export async function POST(
     // References
     // ========================================
 
-    const vehicleRef =
-      adminDb
-        .collection("vehicles")
-        .doc();
+    const vehicleRef = adminDb.collection("vehicles").doc();
 
-    const routeRef =
-      adminDb
-        .collection("routes")
-        .doc();
+    const routeRef = adminDb.collection("routes").doc();
 
-    const tripRef =
-      adminDb
-        .collection("trips")
-        .doc();
+    const tripRef = adminDb.collection("trips").doc();
 
-    const batch =
-      adminDb.batch();
+    const batch = adminDb.batch();
 
-    const now =
-      FieldValue.serverTimestamp();
+    const now = FieldValue.serverTimestamp();
 
     // ========================================
     // Vehicle
     // ========================================
 
-    batch.set(
-      vehicleRef,
-      {
-        companyId:
-          operator.companyId,
+    batch.set(vehicleRef, {
+      companyId: operator.companyId,
 
-        companyName:
-          operator.companyName,
+      companyName: operator.companyName,
 
-        name:
-          input.vehicleName,
+      name: input.vehicleName,
 
-        registrationNumber:
-          input.registrationNumber,
+      registrationNumber: input.registrationNumber,
 
-        busType:
-          input.busType,
+      busType: input.busType,
 
-        seatCapacity:
-          input.seatCapacity,
+      seatCapacity: input.seatCapacity,
 
-        seatLayout:
-          input.seatLayout,
+      seatLayout: input.seatLayout,
 
-        amenities:
-          input.amenities,
+      amenities: input.amenities,
 
-        status:
-          input.vehicleStatus,
+      status: input.vehicleStatus,
 
-        createdBy:
-          operator.userId,
+      createdBy: operator.userId,
 
-        createdAt: now,
-        updatedAt: now,
-      },
-    );
+      createdAt: now,
+      updatedAt: now,
+    });
 
     // ========================================
     // Route
     // ========================================
 
-    batch.set(
-      routeRef,
-      {
-        companyId:
-          operator.companyId,
+    batch.set(routeRef, {
+      companyId: operator.companyId,
 
-        companyName:
-          operator.companyName,
+      companyName: operator.companyName,
 
-        origin:
-          input.origin,
+      origin: input.origin,
 
-        destination:
-          input.destination,
+      destination: input.destination,
 
-        boardingPoints:
-          input.boardingPoints,
+      boardingPoints: input.boardingPoints,
 
-        dropOffPoint:
-          input.dropOffPoint,
+      dropOffPoint: input.dropOffPoint,
 
-        status: "active",
+      status: "active",
 
-        createdBy:
-          operator.userId,
+      createdBy: operator.userId,
 
-        createdAt: now,
-        updatedAt: now,
-      },
-    );
+      createdAt: now,
+      updatedAt: now,
+    });
 
     // ========================================
     // Trip
     // ========================================
 
-    batch.set(
-      tripRef,
-      {
-        companyId:
-          operator.companyId,
+    batch.set(tripRef, {
+      companyId: operator.companyId,
 
-        companyName:
-          operator.companyName,
+      companyName: operator.companyName,
 
-        vehicleId:
-          vehicleRef.id,
+      vehicleId: vehicleRef.id,
 
-        routeId:
-          routeRef.id,
+      routeId: routeRef.id,
 
-        vehicleName:
-          input.vehicleName,
+      vehicleName: input.vehicleName,
 
-        registrationNumber:
-          input.registrationNumber,
+      registrationNumber: input.registrationNumber,
 
-        origin:
-          input.origin,
+      origin: input.origin,
 
-        destination:
-          input.destination,
+      destination: input.destination,
 
-        boardingPoints:
-          input.boardingPoints,
+      boardingPoints: input.boardingPoints,
 
-        dropOffPoint:
-          input.dropOffPoint,
+      dropOffPoint: input.dropOffPoint,
 
-        busType:
-          input.busType,
+      busType: input.busType,
 
-        seatLayout:
-          input.seatLayout,
+      seatLayout: input.seatLayout,
 
-        amenities:
-          input.amenities,
+      amenities: input.amenities,
 
-        scheduleType:
-          input.scheduleType,
+      scheduleType: input.scheduleType,
 
-        operatingDays:
-          input.operatingDays,
+      operatingDays: input.operatingDays,
 
-        departureTime:
-          input.departureTime,
+      departureTime: input.departureTime,
 
-        arrivalTime:
-          input.arrivalTime,
+      arrivalTime: input.arrivalTime,
 
-        bookingWindowDays:
-          input.bookingWindowDays,
+      bookingWindowDays: input.bookingWindowDays,
 
-        fare:
-          input.fare,
+      fare: input.fare,
 
-        totalSeats:
-          input.seatCapacity,
+      totalSeats: input.seatCapacity,
 
-        availableSeats:
-          input.seatCapacity,
+      availableSeats: input.seatCapacity,
 
-        bookingEnabled:
-          input.bookingEnabled,
+      bookingEnabled: input.bookingEnabled,
 
-        status:
-          input.status,
+      status: input.status,
 
-        createdBy:
-          operator.userId,
+      createdBy: operator.userId,
 
-        createdAt: now,
-        updatedAt: now,
-      },
-    );
+      createdAt: now,
+      updatedAt: now,
+    });
 
     // ========================================
     // Seat Templates
     // ========================================
 
-    const seatNumbers =
-      generateSeatNumbers(
-        input.seatCapacity,
-        input.seatLayout,
-      );
-
-    seatNumbers.forEach(
-      (
-        seatNumber,
-        index,
-      ) => {
-        const seatRef =
-          adminDb
-            .collection("seats")
-            .doc();
-
-        batch.set(
-          seatRef,
-          {
-            companyId:
-              operator.companyId,
-
-            tripId:
-              tripRef.id,
-
-            vehicleId:
-              vehicleRef.id,
-
-            seatNumber,
-
-            seatIndex:
-              index + 1,
-
-            status:
-              "available",
-
-            active: true,
-
-            createdAt: now,
-            updatedAt: now,
-          },
-        );
-      },
+    const seatNumbers = generateSeatNumbers(
+      input.seatCapacity,
+      input.seatLayout,
     );
+
+    seatNumbers.forEach((seatNumber, index) => {
+      const seatRef = adminDb.collection("seats").doc();
+
+      batch.set(seatRef, {
+        companyId: operator.companyId,
+
+        tripId: tripRef.id,
+
+        vehicleId: vehicleRef.id,
+
+        seatNumber,
+
+        seatIndex: index + 1,
+
+        row: Number(seatNumber.match(/^\d+/)?.[0] ?? 0),
+
+        column: seatNumber.match(/[A-Z]$/)?.[0] ?? "",
+
+        status: "available",
+
+        active: true,
+
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
 
     await batch.commit();
 
@@ -1087,85 +685,60 @@ export async function POST(
         success: true,
 
         message:
-          input.status ===
-          "draft"
+          input.status === "draft"
             ? "Bus and trip saved as a draft."
             : "Bus onboarded and trip published successfully.",
 
         trip: {
           id: tripRef.id,
 
-          vehicleId:
-            vehicleRef.id,
+          vehicleId: vehicleRef.id,
 
-          routeId:
-            routeRef.id,
+          routeId: routeRef.id,
 
-          companyId:
-            operator.companyId,
+          companyId: operator.companyId,
 
-          companyName:
-            operator.companyName,
+          companyName: operator.companyName,
 
-          vehicleName:
-            input.vehicleName,
+          vehicleName: input.vehicleName,
 
-          registrationNumber:
-            input.registrationNumber,
+          registrationNumber: input.registrationNumber,
 
-          busType:
-            input.busType,
+          busType: input.busType,
 
-          seatCapacity:
-            input.seatCapacity,
+          seatCapacity: input.seatCapacity,
 
-          seatLayout:
-            input.seatLayout,
+          seatLayout: input.seatLayout,
 
-          amenities:
-            input.amenities,
+          amenities: input.amenities,
 
-          origin:
-            input.origin,
+          origin: input.origin,
 
-          destination:
-            input.destination,
+          destination: input.destination,
 
-          boardingPoints:
-            input.boardingPoints,
+          boardingPoints: input.boardingPoints,
 
-          dropOffPoint:
-            input.dropOffPoint,
+          dropOffPoint: input.dropOffPoint,
 
-          scheduleType:
-            input.scheduleType,
+          scheduleType: input.scheduleType,
 
-          operatingDays:
-            input.operatingDays,
+          operatingDays: input.operatingDays,
 
-          departureTime:
-            input.departureTime,
+          departureTime: input.departureTime,
 
-          arrivalTime:
-            input.arrivalTime,
+          arrivalTime: input.arrivalTime,
 
-          bookingWindowDays:
-            input.bookingWindowDays,
+          bookingWindowDays: input.bookingWindowDays,
 
-          fare:
-            input.fare,
+          fare: input.fare,
 
-          totalSeats:
-            input.seatCapacity,
+          totalSeats: input.seatCapacity,
 
-          availableSeats:
-            input.seatCapacity,
+          availableSeats: input.seatCapacity,
 
-          bookingEnabled:
-            input.bookingEnabled,
+          bookingEnabled: input.bookingEnabled,
 
-          status:
-            input.status,
+          status: input.status,
         },
       },
       {
@@ -1181,288 +754,135 @@ export async function POST(
 // Validation
 // ========================================
 
-function validateTripInput(
-  body: TripInput,
-) {
-  const vehicleName =
-    cleanText(
-      body.vehicleName,
-      80,
-    );
+function validateTripInput(body: TripInput) {
+  const vehicleName = cleanText(body.vehicleName, 80);
 
-  const registrationNumber =
-    cleanText(
-      body.registrationNumber,
-      30,
-    ).toUpperCase();
+  const registrationNumber = cleanText(
+    body.registrationNumber,
+    30,
+  ).toUpperCase();
 
-  const busType =
-    cleanText(
-      body.busType,
-      40,
-    );
+  const busType = cleanText(body.busType, 40);
 
-  const seatLayout =
-    cleanText(
-      body.seatLayout,
-      10,
-    );
+  const seatLayout = cleanText(body.seatLayout, 10);
 
-  const vehicleStatus =
-    cleanText(
-      body.vehicleStatus,
-      20,
-    );
+  const vehicleStatus = cleanText(body.vehicleStatus, 20);
 
-  const origin =
-    cleanText(
-      body.origin,
-      80,
-    );
+  const origin = cleanText(body.origin, 80);
 
-  const destination =
-    cleanText(
-      body.destination,
-      80,
-    );
+  const destination = cleanText(body.destination, 80);
 
-  const dropOffPoint =
-    cleanText(
-      body.dropOffPoint,
-      120,
-      false,
-    );
+  const dropOffPoint = cleanText(body.dropOffPoint, 120, false);
 
-  const scheduleType =
-    cleanText(
-      body.scheduleType,
-      30,
-    );
+  const scheduleType = cleanText(body.scheduleType, 30);
 
-  const status =
-    cleanText(
-      body.status,
-      20,
-    );
+  const status = cleanText(body.status, 20);
 
   if (!vehicleName) {
-    throw new ApiError(
-      400,
-      "Bus name or fleet number is required.",
-    );
+    throw new ApiError(400, "Bus name or fleet number is required.");
   }
 
   if (!registrationNumber) {
-    throw new ApiError(
-      400,
-      "Registration number is required.",
-    );
+    throw new ApiError(400, "Registration number is required.");
   }
 
   if (
-    !ALLOWED_BUS_TYPES.includes(
-      busType as
-        (typeof ALLOWED_BUS_TYPES)[number],
-    )
+    !ALLOWED_BUS_TYPES.includes(busType as (typeof ALLOWED_BUS_TYPES)[number])
   ) {
-    throw new ApiError(
-      400,
-      "Select a valid bus type.",
-    );
+    throw new ApiError(400, "Select a valid bus type.");
   }
 
   if (
-    !ALLOWED_LAYOUTS.includes(
-      seatLayout as
-        (typeof ALLOWED_LAYOUTS)[number],
-    )
+    !ALLOWED_LAYOUTS.includes(seatLayout as (typeof ALLOWED_LAYOUTS)[number])
   ) {
-    throw new ApiError(
-      400,
-      "Select a valid seat layout.",
-    );
+    throw new ApiError(400, "Select a valid seat layout.");
   }
 
-  const seatCapacity =
-    Number(
-      body.seatCapacity,
-    );
+  const seatCapacity = Number(body.seatCapacity);
 
   if (
-    !Number.isInteger(
-      seatCapacity,
-    ) ||
+    !Number.isInteger(seatCapacity) ||
     seatCapacity < 1 ||
     seatCapacity > 80
   ) {
-    throw new ApiError(
-      400,
-      "Seat capacity must be between 1 and 80.",
-    );
+    throw new ApiError(400, "Seat capacity must be between 1 and 80.");
   }
 
   if (
     !ALLOWED_VEHICLE_STATUSES.includes(
-      vehicleStatus as
-        (typeof ALLOWED_VEHICLE_STATUSES)[number],
+      vehicleStatus as (typeof ALLOWED_VEHICLE_STATUSES)[number],
     )
   ) {
-    throw new ApiError(
-      400,
-      "Select a valid vehicle status.",
-    );
+    throw new ApiError(400, "Select a valid vehicle status.");
   }
 
-  if (
-    !origin ||
-    !destination
-  ) {
-    throw new ApiError(
-      400,
-      "Origin and destination are required.",
-    );
+  if (!origin || !destination) {
+    throw new ApiError(400, "Origin and destination are required.");
   }
 
-  if (
-    origin.toLowerCase() ===
-    destination.toLowerCase()
-  ) {
-    throw new ApiError(
-      400,
-      "Origin and destination must be different.",
-    );
+  if (origin.toLowerCase() === destination.toLowerCase()) {
+    throw new ApiError(400, "Origin and destination must be different.");
   }
 
   if (
     !ALLOWED_SCHEDULE_TYPES.includes(
-      scheduleType as
-        (typeof ALLOWED_SCHEDULE_TYPES)[number],
+      scheduleType as (typeof ALLOWED_SCHEDULE_TYPES)[number],
     )
   ) {
-    throw new ApiError(
-      400,
-      "Select a valid schedule type.",
-    );
+    throw new ApiError(400, "Select a valid schedule type.");
   }
 
   if (
     !ALLOWED_TRIP_STATUSES.includes(
-      status as
-        (typeof ALLOWED_TRIP_STATUSES)[number],
+      status as (typeof ALLOWED_TRIP_STATUSES)[number],
     )
   ) {
-    throw new ApiError(
-      400,
-      "Select a valid trip status.",
-    );
+    throw new ApiError(400, "Select a valid trip status.");
   }
 
-  const departureTime =
-    validateTime(
-      body.departureTime,
-      "Departure time",
-    );
+  const departureTime = validateTime(body.departureTime, "Departure time");
 
-  const arrivalTime =
-    validateTime(
-      body.arrivalTime,
-      "Arrival time",
-    );
+  const arrivalTime = validateTime(body.arrivalTime, "Arrival time");
 
-  const fare =
-    Number(body.fare);
+  const fare = Number(body.fare);
 
-  if (
-    !Number.isFinite(fare) ||
-    fare < 0
-  ) {
-    throw new ApiError(
-      400,
-      "Enter a valid ticket price.",
-    );
+  if (!Number.isFinite(fare) || fare < 0) {
+    throw new ApiError(400, "Enter a valid ticket price.");
   }
 
-  const bookingWindowDays =
-    Number(
-      body.bookingWindowDays ??
-        90,
-    );
+  const bookingWindowDays = Number(body.bookingWindowDays ?? 90);
 
   if (
-    !Number.isInteger(
-      bookingWindowDays,
-    ) ||
+    !Number.isInteger(bookingWindowDays) ||
     bookingWindowDays < 1 ||
     bookingWindowDays > 365
   ) {
-    throw new ApiError(
-      400,
-      "Booking window must be between 1 and 365 days.",
-    );
+    throw new ApiError(400, "Booking window must be between 1 and 365 days.");
   }
 
-  const boardingPoints =
-    cleanTextArray(
-      body.boardingPoints,
-      20,
-      120,
-    );
+  const boardingPoints = cleanTextArray(body.boardingPoints, 20, 120);
 
-  if (
-    boardingPoints.length === 0
-  ) {
-    throw new ApiError(
-      400,
-      "Add at least one boarding point.",
-    );
+  if (boardingPoints.length === 0) {
+    throw new ApiError(400, "Add at least one boarding point.");
   }
 
-  const amenities =
-    cleanTextArray(
-      body.amenities,
-      20,
-      60,
-    );
+  const amenities = cleanTextArray(body.amenities, 20, 60);
 
-  let operatingDays =
-    cleanTextArray(
-      body.operatingDays,
-      7,
-      20,
-    ).map((day) =>
-      day.toLowerCase(),
-    );
+  let operatingDays = cleanTextArray(body.operatingDays, 7, 20).map((day) =>
+    day.toLowerCase(),
+  );
 
-  operatingDays = [
-    ...new Set(
-      operatingDays,
-    ),
-  ];
+  operatingDays = [...new Set(operatingDays)];
 
-  if (
-    scheduleType === "daily"
-  ) {
-    operatingDays = [
-      ...DAY_NAMES,
-    ];
+  if (scheduleType === "daily") {
+    operatingDays = [...DAY_NAMES];
   } else {
-    const invalidDay =
-      operatingDays.find(
-        (day) =>
-          !DAY_NAMES.includes(
-            day as
-              (typeof DAY_NAMES)[number],
-          ),
-      );
+    const invalidDay = operatingDays.find(
+      (day) => !DAY_NAMES.includes(day as (typeof DAY_NAMES)[number]),
+    );
 
-    if (
-      invalidDay ||
-      operatingDays.length === 0
-    ) {
-      throw new ApiError(
-        400,
-        "Select valid operating days.",
-      );
+    if (invalidDay || operatingDays.length === 0) {
+      throw new ApiError(400, "Select valid operating days.");
     }
   }
 
@@ -1486,14 +906,9 @@ function validateTripInput(
     arrivalTime,
     bookingWindowDays,
 
-    fare:
-      Math.round(
-        fare * 100,
-      ) / 100,
+    fare: Math.round(fare * 100) / 100,
 
-    bookingEnabled:
-      body.bookingEnabled !==
-      false,
+    bookingEnabled: body.bookingEnabled !== false,
 
     status,
   };
@@ -1503,36 +918,20 @@ function validateTripInput(
 // Seat Generator
 // ========================================
 
-function generateSeatNumbers(
-  capacity: number,
-  layout: string,
-) {
-  const letters =
-    layout === "2+1"
-      ? ["A", "B", "C"]
-      : ["A", "B", "C", "D"];
+function generateSeatNumbers(capacity: number, layout: string) {
+  const letters = layout === "2+1" ? ["A", "B", "C"] : ["A", "B", "C", "D"];
 
-  const seats: string[] =
-    [];
+  const seats: string[] = [];
 
   let row = 1;
 
-  while (
-    seats.length < capacity
-  ) {
-    for (
-      const letter of letters
-    ) {
-      if (
-        seats.length >=
-        capacity
-      ) {
+  while (seats.length < capacity) {
+    for (const letter of letters) {
+      if (seats.length >= capacity) {
         break;
       }
 
-      seats.push(
-        `${row}${letter}`,
-      );
+      seats.push(`${row}${letter}`);
     }
 
     row += 1;
@@ -1545,15 +944,8 @@ function generateSeatNumbers(
 // Validation Helpers
 // ========================================
 
-function cleanText(
-  value: unknown,
-  maxLength: number,
-  required = true,
-) {
-  if (
-    typeof value !==
-    "string"
-  ) {
+function cleanText(value: unknown, maxLength: number, required = true) {
+  if (typeof value !== "string") {
     if (required) {
       return "";
     }
@@ -1561,17 +953,10 @@ function cleanText(
     return "";
   }
 
-  return value
-    .trim()
-    .replace(/\s+/g, " ")
-    .slice(0, maxLength);
+  return value.trim().replace(/\s+/g, " ").slice(0, maxLength);
 }
 
-function cleanTextArray(
-  value: unknown,
-  maxItems: number,
-  maxLength: number,
-) {
+function cleanTextArray(value: unknown, maxItems: number, maxLength: number) {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -1579,45 +964,16 @@ function cleanTextArray(
   return [
     ...new Set(
       value
-        .filter(
-          (
-            item,
-          ): item is string =>
-            typeof item ===
-            "string",
-        )
-        .map((item) =>
-          item
-            .trim()
-            .replace(
-              /\s+/g,
-              " ",
-            )
-            .slice(
-              0,
-              maxLength,
-            ),
-        )
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim().replace(/\s+/g, " ").slice(0, maxLength))
         .filter(Boolean),
     ),
   ].slice(0, maxItems);
 }
 
-function validateTime(
-  value: unknown,
-  label: string,
-) {
-  if (
-    typeof value !==
-      "string" ||
-    !/^([01]\d|2[0-3]):[0-5]\d$/.test(
-      value,
-    )
-  ) {
-    throw new ApiError(
-      400,
-      `${label} is invalid.`,
-    );
+function validateTime(value: unknown, label: string) {
+  if (typeof value !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+    throw new ApiError(400, `${label} is invalid.`);
   }
 
   return value;
@@ -1630,46 +986,32 @@ function validateTime(
 class ApiError extends Error {
   status: number;
 
-  constructor(
-    status: number,
-    message: string,
-  ) {
+  constructor(status: number, message: string) {
     super(message);
 
-    this.status =
-      status;
+    this.status = status;
   }
 }
 
-function handleError(
-  error: unknown,
-) {
-  if (
-    error instanceof ApiError
-  ) {
+function handleError(error: unknown) {
+  if (error instanceof ApiError) {
     return NextResponse.json(
       {
         success: false,
-        error:
-          error.message,
+        error: error.message,
       },
       {
-        status:
-          error.status,
+        status: error.status,
       },
     );
   }
 
-  console.error(
-    "Operator trips API error:",
-    error,
-  );
+  console.error("Operator trips API error:", error);
 
   return NextResponse.json(
     {
       success: false,
-      error:
-        "Unable to process the trip request.",
+      error: "Unable to process the trip request.",
     },
     {
       status: 500,
