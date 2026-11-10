@@ -141,25 +141,33 @@ function extractPartialRoute(message: string): {
   return null;
 }
 
+
+
 function extractLocationAfterKeyword(
   message: string,
   keywords: string[]
 ): string | null {
-  const escapedKeywords = keywords.join("|");
+  const escapedKeywords = keywords
+    .map((keyword) =>
+      keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    )
+    .join("|");
 
   const pattern = new RegExp(
-    `(?:${escapedKeywords})\\s+(?:in|at|for)\\s+([a-zA-Z\\s-]+?)(?:\\?|$)`,
+    `\\b(?:${escapedKeywords})\\b\\s+(?:in|at|for|around)\\s+([a-zA-Z][a-zA-Z\\s-]*?)(?=\\s+(?:today|tomorrow|tonight|this\\s+morning|this\\s+afternoon|this\\s+evening|next\\s+week)|[?!.,]|$)`,
     "i"
   );
 
   const match = message.match(pattern);
 
-  if (!match) {
+  if (!match?.[1]) {
     return null;
   }
 
-  return match[1].trim();
+  return match[1].trim().replace(/\s+/g, " ");
 }
+
+
 
 function isWeatherRequest(message: string): boolean {
   const lower = normalizeText(message);
@@ -247,7 +255,8 @@ function formatWeather(weather: WeatherResult): string {
     `Feels like up to: ${weather.apparentTemperatureMax}°C\n` +
     `Chance of precipitation: ${weather.precipitationProbability}%\n` +
     `Expected precipitation: ${weather.precipitation} mm\n` +
-    `Maximum wind speed: ${weather.windSpeed} km/h`
+    `Maximum wind speed: ${weather.windSpeed ?? "N/A"} km/h\n\n` +
+`🚌 Travel advice: ${weather.travelAdvice ?? "Check the latest forecast before travelling."}`
   );
 }
 
@@ -295,11 +304,16 @@ async function handleWeatherRequest(
     };
   }
 
-  const location = extractLocationAfterKeyword(message, [
-    "weather",
-    "forecast",
-    "temperature",
-  ]);
+ const location = extractLocationAfterKeyword(message, [
+  "weather",
+  "forecast",
+  "temperature",
+  "rain",
+  "raining",
+  "showers",
+  "thunderstorm",
+  "thunderstorms",
+]);
 
   if (!location) {
     return null;
