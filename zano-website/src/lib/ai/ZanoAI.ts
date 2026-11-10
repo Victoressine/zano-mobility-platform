@@ -113,6 +113,34 @@ function extractRoute(message: string): {
   return null;
 }
 
+// Recognize a trip request with only one city provided.
+function extractPartialRoute(message: string): {
+  origin?: string;
+  destination?: string;
+} | null {
+  const destinationMatch = message.match(
+    /\b(?:bus|buses|trip|ticket|travel|go|going)\s+to\s+([a-zA-Z][a-zA-Z\s-]*?)(?=\s+(?:tomorrow|today|tonight|morning|afternoon|evening)|[?!.,]|$)/i
+  );
+
+  if (destinationMatch) {
+    return {
+      destination: destinationMatch[1].trim(),
+    };
+  }
+
+  const originMatch = message.match(
+    /\bfrom\s+([a-zA-Z][a-zA-Z\s-]*?)(?=\s+(?:tomorrow|today|tonight|morning|afternoon|evening)|[?!.,]|$)/i
+  );
+
+  if (originMatch) {
+    return {
+      origin: originMatch[1].trim(),
+    };
+  }
+
+  return null;
+}
+
 function extractLocationAfterKeyword(
   message: string,
   keywords: string[]
@@ -289,9 +317,33 @@ async function handleWeatherRequest(
 async function handleTripRequest(
   message: string
 ): Promise<ZanoAIResponse | null> {
-  const route = extractRoute(message);
+    const route = extractRoute(message);
 
   if (!route) {
+    const partialRoute = extractPartialRoute(message);
+
+    if (partialRoute?.destination) {
+      return {
+        success: true,
+        message: `Sure! 🚌 Which city are you travelling from to ${partialRoute.destination}?`,
+      };
+    }
+
+    if (partialRoute?.origin) {
+      return {
+        success: true,
+        message: `Sure! 🚌 Where would you like to travel from ${partialRoute.origin}?`,
+      };
+    }
+
+    if (/\b(find|search|book|available)\b.*\b(bus|buses|trip|trips)\b/i.test(message)) {
+      return {
+        success: true,
+        message:
+          "Sure! 🚌 Where are you travelling from and where would you like to go?",
+      };
+    }
+
     return null;
   }
 
@@ -694,12 +746,49 @@ export async function ZanoAI(
     /*
      * TRIP SEARCH
      */
-    const tripResponse =
-      await handleTripRequest(latestMessage);
+    // Use previous messages to complete an unfinished trip request.
+  let tripMessage = latestMessage;
 
-    if (tripResponse) {
-      return tripResponse;
+  if (!extractRoute(latestMessage)) {
+    const previousMessages = messages.slice(0, -1);
+
+    const previousTripRequest = [...previousMessages]
+      .reverse()
+      .find(
+        (item) =>
+          item.role === "user" &&
+          extractPartialRoute(item.content) !== null
+      );
+
+    if (previousTripRequest) {
+      const partialRoute = extractPartialRoute(
+        previousTripRequest.content
+      );
+
+      const city = latestMessage
+        .trim()
+        .replace(/[?.!]+$/, "");
+
+      // A short city-name reply can complete the previous route.
+      const isCityReply =
+        /^[a-zA-Z][a-zA-Z\s-]{0,39}$/.test(city) &&
+        city.split(/\s+/).length <= 3;
+
+      if (partialRoute && isCityReply) {
+        if (partialRoute.destination) {
+          tripMessage = `Find a bus from ${city} to ${partialRoute.destination}`;
+        } else if (partialRoute.origin) {
+          tripMessage = `Find a bus from ${partialRoute.origin} to ${city}`;
+        }
+      }
     }
+  }
+
+  const tripResponse = await handleTripRequest(tripMessage);
+
+  if (tripResponse) {
+    return tripResponse;
+  }
 
     /*
      * BASIC CONVERSATION

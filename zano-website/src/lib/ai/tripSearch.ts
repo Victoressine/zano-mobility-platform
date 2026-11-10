@@ -169,9 +169,12 @@ function resolveTripInstance(
   const rawDeparture = toDate(trip.departureAt);
   const rawArrival = toDate(trip.arrivalAt);
 
-  if (!rawDeparture || !rawArrival) {
-    return null;
-  }
+  if (
+  trip.scheduleType !== "daily" &&
+  (!rawDeparture || !rawArrival)
+) {
+  return null;
+}
 
   if ((trip.availableSeats ?? 0) < minSeats) {
     return null;
@@ -192,16 +195,20 @@ function resolveTripInstance(
       requestedDate ?? toDateOnly(new Date());
 
     const departureTime =
-      trip.departureTime ??
-      `${pad(rawDeparture.getUTCHours())}:${pad(
+  trip.departureTime ??
+  (rawDeparture
+    ? `${pad(rawDeparture.getUTCHours())}:${pad(
         rawDeparture.getUTCMinutes()
-      )}`;
+      )}`
+    : "");
 
     const arrivalTime =
-      trip.arrivalTime ??
-      `${pad(rawArrival.getUTCHours())}:${pad(
+  trip.arrivalTime ??
+  (rawArrival
+    ? `${pad(rawArrival.getUTCHours())}:${pad(
         rawArrival.getUTCMinutes()
-      )}`;
+      )}`
+    : "");
 
     const resolvedDeparture = createTripDateTime(
       targetDate,
@@ -250,8 +257,14 @@ function resolveTripInstance(
     departure = resolvedDeparture;
     arrival = resolvedArrival;
     travelDate = targetDate;
-  } else {
+  
+     } else {
     // Fixed-date trip.
+    // Both timestamps must exist for a fixed departure.
+    if (!rawDeparture || !rawArrival) {
+      return null;
+    }
+
     if (rawDeparture.getTime() < Date.now()) {
       return null;
     }
